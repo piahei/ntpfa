@@ -1,0 +1,113 @@
+gravity off
+mrstModule add ad-core ad-blackoil ad-props ...
+               blackoil-sequential mimetic incomp optimization
+%%original---------------------------------------------
+% dims = [10, 10];
+% pdims = [1, 1];
+% 
+% G = cartGrid(dims, pdims);
+% G = twister(G);
+% G = computeGeometry(G);
+% [bc, src, W] = deal([]);
+% bc = pside(bc, G, 'Right', 100, 'sat', [1]);
+% bc = pside(bc, G, 'Left', 0, 'sat', [1]);
+%%------------------------------------------------------
+
+
+%%skew with symmetric source/sink------------------------------------------------------
+G = cartGrid([41,20],[2,1]);
+makeSkew = @(c) c(:,1) + .4*(1-(c(:,1)-1).^2).*(1-c(:,2));
+G.nodes.coords(:,1) = 2*makeSkew(G.nodes.coords);
+G = computeGeometry(G);
+rock = makeRock(G, 100*milli*darcy, 0.2);
+pv   = sum(poreVolume(G,rock));
+[bc, src, W] = deal([]);
+srcCells = findEnclosingCell(G,[2 .975; .5 .025; 3.5 .025]);
+src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
+%fluid = initSimpleADIFluid('phases','W','mu', 1*centi*poise,'rho', 1000*kilogram/meter^3);
+%%------------------------------------------------------
+
+%rock = makeRock(G, 100*milli*darcy, 0.2);
+fluid = initSimpleADIFluid();
+
+%fluid = initSingleFluid('mu',1*centi*poise,'rho',1014*kilogram/meter^3);
+
+ %%SEAMOUNT--------------------------------------------------------
+% load seamount
+% G = triangleGrid([x(:) y(:)], delaunay(x,y));
+% [Gmin,Gmax] = deal(min(G.nodes.coords), max(G.nodes.coords));
+% G.nodes.coords = bsxfun(@times, ...
+% bsxfun(@minus, G.nodes.coords, Gmin), 1000./(Gmax - Gmin));
+% G = computeGeometry(G);
+% rock = makeRock(G, 0.05, 0.2);
+% e=boundaryFaces(G);
+% [bc,src,W]=deal([]);
+% bc = addBC(bc, e, 'pressure', 50*barsa, 'sat',[1]);
+% tmp = (G.cells.centroids - repmat([450, 500],G.cells.num,1)).^2;
+% [~,ind] = min(sum(tmp,2));
+% %src = addSource(src, ind, -.02*pv/year,'sat',[1]);
+% src = addSource(src, ind, -.02,'sat',[1]);
+%-------------------------------------------------------------------
+
+
+model = SimpleNTPFAmodel(G, rock, fluid);
+model.verbose = true;
+
+% Comment out for source
+% bc = [];
+% src = addSource(src, 1, 1, 'sat', [1]);
+% src = addSource(src, G.cells.num, -1, 'sat', [1]);
+
+% bc = [];
+ %pv = sum(poreVolume(G,rock));  %compute porevolume
+ %src = addSource(src, 1, pv,'sat',[1]);    %add source
+ %src = addSource(src, G.cells.num, -pv,'sat',[1]);
+ 
+
+%%
+% NTPFA
+state0 = initResSol(G, 0, [1, 0]);
+dT = 1;
+
+schedule = simpleSchedule(dT, 'W', W, 'bc', bc, 'src', src);
+[~, states] = simulateScheduleAD(state0, model, schedule);
+ntpfa = states{1};
+
+% TPFA
+modelTPFA = SimplePressureModel(G, rock, fluid);
+modelTPFA.verbose = true;
+scheduleTPFA = simpleSchedule(dT, 'W', W, 'bc', bc, 'src', src);
+[~, statesTPFA] = simulateScheduleAD(state0, modelTPFA, scheduleTPFA);
+tpfa = statesTPFA{1};
+
+% MULTIPOINT
+T = computeMultiPointTrans(G, rock);
+fluid2 = initSimpleFluid('mu', [1, 1], 'rho', [1, 1], 'n', [1, 1]);
+MP = incompMPFA(state0, G, T, fluid2, 'W', W, 'bc', bc,'src', src);
+
+% MIMETIC
+S = computeMimeticIP(G, rock);
+%fluid2 = initSimpleFluid('mu', [1, 1], 'rho', [1, 1], 'n', [1, 1]);
+mimetic = incompMimetic(state0, G, S, fluid2, 'bc', bc, 'src', src);
+
+%%
+figure(1), clf
+subplot(3, 1, 2);
+plotCellData(G, ntpfa.pressure)
+axis equal
+title('NTPFA')
+
+subplot(3, 1, 1);
+plotCellData(G, tpfa.pressure)
+axis equal
+title('TPFA')
+% 
+% subplot(4,1,3);
+% plotCellData(G, mimetic.pressure)
+% axis equal
+% title('MIMETIC')
+
+subplot(3,1,3);
+plotCellData(G,MP.pressure)
+axis equal
+title('MULTIPOINT')
