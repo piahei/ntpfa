@@ -4,153 +4,224 @@ function coSet = getCollactionSetOPT(G, rock)
     end
     
     n_hf = size(G.cells.faces, 1);
+    n_f = G.faces.num;
     dim = G.griddim;
+    numFace = 4; %assumed cartesian grid - to be generalized
+    isBF = false(G.faces.num, 1);
+    isBF(boundaryFaces(G)) = true;
+    n_bf = sum(isBF);
+    n_if = n_f-n_bf;
     
-    jumpFlag = getJumpFlag(G, rock);
+    %jumpFlag = getJumpFlag(G, rock);
     faceSign = zeros(n_hf, 1);
     N = G.faces.neighbors;
     % This builds a collocation set for the nonlinear two-point flux
     % approximation. Generally, we construct the necessary coefficients 
     % and vectors using optimization as a preprocessing step. 
     % 
-    % Most of these sets are constructed twice: Once for the cell to face
-    % case, and once for the face to cell case.
+    % Most of these sets are constructed twice (internal faces): 
+    % Once across the face ij and once across ji 
     
     % Vectors from d.o.f. to interpolation points
-    T_all = cell(dim, 2);
-    [T_all{:}] = deal(zeros(n_hf, dim));
+    T_all = cell(numFace, 2);  
+    [T_all{:}] = deal(zeros(n_f, dim));
     
     % Coefficient matrices for each set of vectors
-    [c_cell, c_face]       = deal(zeros(n_hf, dim));
+    [coeff_ij, coeff_ji]       = deal(zeros(n_if, numFace));
+    coeff_bf = zeros(n_bf,numFace);
     % Active indicators for each set of vectors/coefficients. A point is
     % said to be active if it is defined in the cell where we want a
     % degree of freedom for a two point method (plus the face between two
     % cells).
-    [act_cell, act_face]   = deal(false(n_hf, dim));
+    [act_cell_ij, act_cell_ji]   = deal(false(n_if, numFace));
+    act_cell_bf = false(n_bf,numFace);
+   
     % Global indices for the pressure values we need to sample for each
-    % point. Note that the interpretation of the index depends on the type
-    % array.
-    [ix_cell, ix_face]     = deal(zeros(n_hf, dim));
+    % point. Cell neighbors for cells needed when computing the flux.
+    
+    [cn_1, cn_2]     = deal(zeros(n_if, numFace));
+    cn_bf = zeros(n_bf,numFace);
     % Type array indicating what the indices actually point to:
     %         1: Cell
     %         2: Face
     %         3: Edge ??
-    [type_cell, type_face] = deal(zeros(n_hf, dim));
+    %[type_ij, type_ji] = deal(ones(n_f, numFace)*2);  Removed this
+    
     % L is the face normal vectors, scaled by cell permeability and face
     % area. One for each half face.
     L = zeros(n_hf, dim);
-    L_face = zeros(G.faces.num, dim);
+    L_face = zeros(n_f, dim);
     
     cellNo = rldecode(1 : G.cells.num, ...
-                     diff(G.cells.facePos), 2) .';
+                     diff(G.cells.facePos), 2) .';  
     faceNo = G.cells.faces(:, 1);
-    isBF = false(G.faces.num, 1);
-    isBF(boundaryFaces(G)) = true;
-    for i = 1:n_hf
-        c = cellNo(i);
-        f = faceNo(i);
-        % Self faces are faces belonging to current cell
-        selfFaces = gridCellFaces(G, c);
-        adjFaces = adjacentFacesForFace(G, f, dim - 1);
-        
-        % Compute permeability scaled normal vector
-        sgn = 1 - 2*(G.faces.neighbors(f, 2) == c);
-        faceSign(i) = sgn;
-        normal = G.faces.normals(f, :);
-        K = getK(rock, c, dim);
-        l = normal*sgn*K;
-        L(i, :) = l;
-        L_face(f, :) = normal*K;
-        
-        % Cell to half-face collaction
-        cpt = G.cells.centroids(c, :);
-        
-        isJump = jumpFlag(selfFaces);
-        fa = selfFaces(isJump); 
-        cells = N(selfFaces(~isJump), :);
-        cells(cells == c) = 0;
-        cells = sum(cells, 2);
-        
+   
+    
+    %Find variables for each face
+    [hap,beta_ij,beta_ji,O_i,O_j] = findVariablesNTPFA(G,rock); 
+    var = struct('beta_ij',beta_ij,'beta_ji',beta_ji,'O_i',O_i,'O_j',O_j);
+    %coSet.variables = var;
+    
+    L1_ij = zeros(n_if,numFace);
+    L2_ij = zeros(n_if,numFace);
+    L1_ji = zeros(n_if,numFace);
+    L2_ji = zeros(n_if,numFace);
+    A_ij = zeros(n_if,numFace);
+    A_ji = zeros(n_if,numFace);
+    
+    L1_bf = zeros(n_bf,numFace);
+    L2_bf = zeros(n_bf,numFace);
+    A_bf = zeros(n_bf,numFace);
+    
+    i = 1;  %index for half face
+    bf = 0;
+    iF = 0;
+    for f = 1:n_f 
         if isBF(f)
-            [T, type, coeff, ix, successCell] = collocateSet(G,cpt,cells,fa,[],l);
+            bf=bf+1;
+            c = N(f,find(N(f,:)~=0)); 
+            sgn = 1 - 2*(N(f, 2) == c);
+            faceSign(i) = sgn;
+            normal = G.faces.normals(f, :);
+            K = getK(rock, c, dim);
+            l = normal*sgn*K;
+            L(i, :) = l;
+            i = i+1;
+            L_face(f, :) = normal*K;
+            cpt = G.cells.centroids(c,:);
+            selfFaces = gridCellFaces(G,c);
+            
+            [T, ~, coeff, ~, successCell] = collocateSetOPT(G,cpt,selfFaces,hap(selfFaces,:), l);
+            
+            assert(successCell)
+            
+            for j = 1:numFace  %numFace(c) -for variable number of faces
+                T_all{j, 1}(f, :) = T(j, :);
+            end
+            
+            coeff_bf(bf,:) = coeff;
+            n = N(selfFaces,:); n(n==c)=[]; %neighbors to cell, including "ouside" cells
+            act_cell_bf(bf,find(n~=0)) = true; %active cell neighbors
+            n(n==0)=1; %set outside cell to 1 to avoid nonlogical indexing
+            cn_bf(bf,:) = n;  
+            A_bf(bf,:) = coeff.*var.O_j(selfFaces);
+            L1_bf(bf,:) = A_bf(bf,:)'.*var.O_i(selfFaces);
+            L2_bf(bf,:) = A_bf(bf,:)'.*var.O_j(selfFaces);
+            
         else
-            [T, type, coeff, ix, successCell] = collocateSetOPT(G, cpt, [], fa, [], l);
-        end
-        
-        assert(successCell)
-        
-        for j = 1:dim
-            T_all{j, 1}(i, :) = T(j, :);
-        end
-        type_cell(i, :) = type;
-        ix_cell(i, :) = ix;
-        c_cell(i, :) = coeff;%./factor;
-        act_cell(i, :) = ix == f & type == 2;
-        
-        % Half-face to cell collaction
-        fpt = G.faces.centroids(f, :);
-        hfFaces =  intersect(adjFaces, selfFaces);
-        
-        isJump = jumpFlag(hfFaces);
-        fa = hfFaces(isJump);
-        cells = N(hfFaces(~isJump), :);
-        cells(cells == c) = 0;
-        cells = sum(cells, 2);
-        cells = [cells; c];
-      
-        [T, type, coeff, ix, successFace] = collocateSet(G, fpt, cells, fa, [], -l);
-
-        
-        if ~successFace
-            selfNodes = unique(gridFaceNodes(G, selfFaces));
-            dispif(mrstVerbose > 1, 'Half-face %d of %d...\n', i, n_hf);
-            dispif(mrstVerbose > 1, 'Extending definition to nodes, unable to find face basis');
-            % Should probably be more careful about these nodes
-            [T, type, coeff, ix, successFace] = collocateSet(G, fpt, c, selfFaces, selfNodes, -l);
+            iF = iF+1;
+            c1 = N(f,1);  
+            c2 = N(f,2);  
+            % Self faces are faces belonging to current cell
+            selfFaces1 = gridCellFaces(G, c1);
+            selfFaces2 = gridCellFaces(G, c2);
+            %adjFaces = adjacentFacesForFace(G, f, dim - 1);
+            
+            % Compute permeability scaled normal vector
+            sgn = 1 - 2*(G.faces.neighbors(f, 2) == c1); %unødvendig, kan settes til +1
+            faceSign(i) = sgn;
+            faceSign(i+1) = -sgn;
+            normal = G.faces.normals(f, :);
+            K = getK(rock, c1, dim);
+            l = normal*sgn*K;
+            L(i, :) = l;
+            L(i+1,:) = -l;
+            i = i+2;
+            L_face(f, :) = normal*K;
+            
+            % Collocation accross face direction ij
+            cpt = G.cells.centroids(c1, :);  %centerpoint of cell 1
+            
+            %isJump = jumpFlag(selfFaces);
+            %fa = selfFaces(isJump);
+            %cells = N(selfFaces(~isJump), :);
+            %cells(cells == c) = 0;
+            %cells = sum(cells, 2);
+            
+            [T, ~, coeff, ~, successCell] = collocateSetOPT(G,cpt,selfFaces1,hap(selfFaces1,:), l);
+            
+            assert(successCell)
+            
+            A_ij(iF,:) = coeff.*var.O_j(selfFaces1);
+            L1_ij(iF,:) = A_ij(iF,:)'.*var.O_i(selfFaces1);
+            L2_ij(iF,:) = A_ij(iF,:)'.*var.O_j(selfFaces1);
+            
+            
+            for j = 1:numFace
+                T_all{j, 1}(f, :) = T(j, :);
+            end
+            
+            coeff_ij(iF,:) = coeff;
+            n = N(selfFaces1,:); n(n==c1)=[]; %neighbors to cell, including "ouside" cells
+            act_cell_ij(iF,find(n~=0)) = true; %active cell neighbors
+            n(n==0)=1; %set outside cell to 1 to avoid nonlogical indexing
+            cn_1(iF,:) = n;  
+           
+            % Collocation accross face direction ji
+           
+            cpt = G.cells.centroids(c2,:);
+           
+            [T, ~, coeff, ~, successFace] = collocateSetOPT(G, cpt, selfFaces2, hap(selfFaces2,:), -l);
+            
             assert(successFace)
-        end
+            
+            A_ji(iF,:) = coeff.*var.O_j(selfFaces2);
+            L1_ji(iF,:) = A_ji(iF,:)'.*var.O_i(selfFaces2);
+            L2_ji(iF,:) = A_ji(iF,:)'.*var.O_j(selfFaces2);
+            
+            for j = 1:numFace
+                T_all{j, 2}(f, :) = T(j, :);
+            end
+            coeff_ji(iF,:) = coeff;
+            n = N(selfFaces2,:); n(n==c2) = [];
+            act_cell_ji(iF,find(n~=0)) = true;
+            n(n==0)=1; %set outside cell to 1 to avoid nonlogical indexing
+            cn_2(iF, :) = n; 
         
-        for j = 1:dim
-            T_all{j, 2}(i, :) = T(j, :);
         end
-        type_face(i, :) = type;
-        ix_face(i, :) = ix;
-        c_face(i, :) = coeff;%./factor;
-        act_face(i, :) = ix == c & type == 1;
     end
-    coSet.jumpFace = jumpFlag;
+    vars = struct('L1_ij',L1_ij,'L2_ij',L2_ij,'L1_ji',L1_ji,'L2_ji',L2_ji,...
+        'L1_bf',L1_bf,'L2_bf',L2_bf,'A_ij',A_ij,'A_ji',A_ji,'A_bf',A_bf);
+    coSet.variables = vars;
+%     coSet.L_ij = {L1_ij,L2_ij};
+%     coSet.L_ji = {L1_ji,L2_ji};
+%     coSet.L_bf = L_bf;
+%     coSet.A = {A_ij,A_ji,A_bf}
+   
     coSet.T = T_all;
 %     coSet.T_norm = cellfun(@(x) sqrt(sum(x.^2, 2)), T_all, 'UniformOutput', false);
-    coSet.C = {c_cell, c_face};
-    coSet.types = {type_cell, type_face};
-    coSet.globalIndices = {ix_cell, ix_face};
+    coSet.C = {coeff_ij, coeff_ji};
+   % coSet.types = {type_ij, type_ji};
+    coSet.faceCellNeighbors = {cn_1, cn_2, cn_bf};
     coSet.l = L;
-    coSet.active = {act_cell, act_face};
+    coSet.active = struct('act_cell_ij',act_cell_ij,'act_cell_ji',act_cell_ji,'act_cell_bf',act_cell_bf);
+    
     
 %     exclude_cell = struct('ix', faceNo, 'type', 2);
 %     exclude_face = struct('ix', cellNo, 'type', 1);
+
     % Construct mapping operators
-    ops = cell(dim, 2);
-    Pc = speye(G.cells.num);
-    Pf = getFaceFromCellInterpolator(G, rock);
-    Pn = getNodeFromCellInterpolator(G);
+%     ops = cell(dim, 2);
+%     Pc = speye(G.cells.num);
+%     Pf = getFaceFromCellInterpolator(G, rock);
+%     Pn = getNodeFromCellInterpolator(G);
     
-    for i = 1:dim
-        for j = 1:2
-            if j == 1
-                exclude = G.faces.neighbors(faceNo, 2);
-            else
-                exclude = G.faces.neighbors(faceNo, 1);
-            end
-            gi = coSet.globalIndices{j}(:, i);
-            ti = coSet.types{j}(:, i);
-            ops{i, j} = getInterpolationOperator(Pc, Pf, Pn, gi, ti, exclude);
-        end
-    end
-    coSet.pressureOperators = ops;
+%     for i = 1:numFace
+%         for j = 1:2
+%             if j == 1
+%                 exclude = G.faces.neighbors(faceNo, 2);
+%             else
+%                 exclude = G.faces.neighbors(faceNo, 1);
+%             end
+%             gi = coSet.globalIndices{j}(:, i);
+%             ti = coSet.types{j}(:, i);
+%             ops{i, j} = getInterpolationOperatorOPT(Pc, Pf, Pn, gi, ti, exclude);
+%         end
+%     end
+%     coSet.pressureOperators = ops;
     
     
-    coSet = storeFaceSet(G, rock, coSet, faceSign, L_face);
+   % coSet = storeFaceSet(G, rock, coSet, faceSign, L_face);
     
     
     intx = all(G.faces.neighbors > 0, 2);
@@ -201,11 +272,12 @@ function [T, types, coefficients, globIx, ok] = collocateSet(G, centerpt, cells,
     types = typ(ix);
 end
 
-function [T, types, coefficients, globIx, ok] = collocateSetOPT(G, centerpt, cells, faces, nodes, l)
-    [pts, typ, glob] = getCandidatePointsOPT(G,faces);
-    [T, ix, coefficients, ok] = OPTgetSetForHF(centerpt, l, pts);
-    globIx = glob(ix);
-    types = typ(ix);
+function [T, types, coefficients, globIx, ok] = collocateSetOPT(G,cpt,faces,hap, l)
+   % [pts, typ, glob] = getCandidatePointsOPT(G,faces);
+    [T, ix, coefficients, ok] = OPTgetSetForHF(cpt, l, hap);
+    globIx = faces(ix); 
+    %types = typ(ix);
+    types = ones(4,1)*2;
 end
  
 % function [alpha,gamma] = decomp(faceNormal,noFaces,centroid,hap)
@@ -238,22 +310,22 @@ end
 % 
 % end
 
-function [T, ixSet, coeff, done] = OPTgetSetForHF(center,l,pts)
+function [T, ixSet, coeff, done] = OPTgetSetForHF(center,l,hap)
 done = false;
 
-dim = size(pts,2);
-N = size(pts,1);
+%dim = size(pts,2);
+N = size(hap,1);  %numper of faces to cell
 coeff = zeros(N+1,1);
 
-T = bsxfun(@minus,pts,center);
-t_v = sqrt(sum(T.^2,2));   %norm of each row in t
-t_u = bsxfun(@rdivide, T, t_v)';  %normalized t
+t = bsxfun(@minus,hap,center);
+t_v = sqrt(sum(t.^2,2));   %norm of each row in t
+t_u = bsxfun(@rdivide, t, t_v)';  %normalized t
 
 l_v = norm(l,2);  %norm of 'facenormal'
 l_u = l./l_v;     %normalized 'facenormal'
 
 s = bsxfun(@rdivide,t_v,l_v);  %sigma
-k = N/min(s)+2;              %kappa
+k = N/min(s)+1;              %kappa
 c = ones(N+1,1);
 c(end) = k;
 
@@ -272,7 +344,7 @@ dist = bsxfun(@minus, xl, xi);
 dist = sum(dist.^2, 2);
 dist = sqrt(sum(dist.^2, 2));
 
-[v, ixSet] = sort(dist);
+[~, ixSet] = sort(dist);
 
 
 
@@ -296,9 +368,11 @@ end
 %else
 %end
 
+T = t(ixSet',:);
+
 for j=1:length(ixSet)
     if coeff(j) == 0
-        ixSet(ixSet == j) = [];
+        ixSet(ixSet == j) = [];  %unnecessary? keep order
     end
 end
 
@@ -497,7 +571,7 @@ function [pts, types, ix] = getCandidatePoints(G, cells, faces, nodes)
 end
 
 function [pts, types, ix] = getCandidatePointsOPT(G,faces)
-    ix = faces; 
+    ix = faces; %=globIx  - forenkle! 
     ix = ix(:);
     pts = G.faces.centroids(faces,:);
     types = ones(length(ix),1)*2;
@@ -547,4 +621,93 @@ function coSet = storeFaceSet(G, rock, coSet, faceSign, L_face)
     exclude_right = struct('ix', G.faces.neighbors(intx, 2), 'type', 1);
 
     coSet.faceSet = faceSet;
+end
+
+function [hap,beta_ij,beta_ji,O_i,O_j] = findVariablesNTPFA(G,rock)
+
+dim = G.griddim;
+noFaces = G.faces.num;
+bFace = boundaryFaces(G);
+intFace = (1:1:noFaces)';
+intFace(bFace) = [];
+n_if = size(intFace,1); %number of internal faces
+
+hap = zeros(noFaces,2);
+%hap(bFace,:) = G.faces.centroids(bFace,:); %hap for bf is equal to centroid
+
+N = G.faces.neighbors;
+nodePos = G.faces.nodePos;
+nodes = G.faces.nodes;
+
+beta_ij = zeros(noFaces,1); %beta for internal faces (left zero for boundary)
+beta_ji = zeros(noFaces,1);
+O_i = zeros(noFaces,1); %omega_ij (left zero for boundary)
+O_j = zeros(noFaces,1); %omega_ji
+
+for i = 1:n_if  %over all internal faces
+    f = intFace(i);
+    c1 = N(f,1); %cell neighbor 1
+    c2 = N(f,2); %cell neighbor 2
+    
+    node = nodes(nodePos(f) : nodePos(f+1)-1, :);
+    node1 = node(1);
+    node2 = node(2);
+    fn1 = G.nodes.coords(node1,:);  %coordinates to node 1
+    fn2 = G.nodes.coords(node2,:);  %coordinates to node 2
+    
+    % for boundary faces, permeability is mirrored outside boundary
+%     if c1 == 0 
+%         K2 = getK(rock,c2,dim);
+%         K1 = K2;
+%         dist_j = abs((fn2(2)-fn1(2))*centroid2(1)-(fn2(1)-fn1(1))*centroid2(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
+%             sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);
+%         beta_ji(f) = K2*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_j;
+%     elseif c2 == 0
+%         K1 = getK(rock,c1,dim);
+%         K2 = K1;
+%         dist_i = abs((fn2(2)-fn1(2))*centroid1(1)-(fn2(1)-fn1(1))*centroid1(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
+%             sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);
+%         beta_ij(f) = K1*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_i;
+%     else
+%         K1 = getK(rock,c1,dim);
+%         K2 = getK(rock,c2,dim);
+%         centroid1 = G.cells.centroids(c1,:); %centroid of neighboring cell 1
+%         centroid2 = G.cells.centroids(c2,:); %centroid of neighboring cell 2
+%         dist_i = abs((fn2(2)-fn1(2))*centroid1(1)-(fn2(1)-fn1(1))*centroid1(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
+%             sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 1 to face
+%         dist_j = abs((fn2(2)-fn1(2))*centroid2(1)-(fn2(1)-fn1(1))*centroid2(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
+%             sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 2 to face
+%         beta_ij(f) = K1*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_i;
+%         %faceAreas(i)^2*
+%         beta_ji(f) = K2*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_j;
+%         %faceAreas(i)^2*
+%         O_i(f) = beta_ij(f)/(beta_ij(f)+beta_ji(f));  %omega
+%         O_j(f) = beta_ji(f)/(beta_ij(f)+beta_ji(f));
+%         hap(f,:) = (beta_ij(f)+beta_ji(f))\...
+%             (beta_ij(f)*centroid1'+beta_ji(f)*centroid2'+(K1-K2)*G.faces.normals(f,:)');
+%         
+%     end
+    
+
+    K1 = getK(rock,c1,dim);
+    K2 = getK(rock,c2,dim);
+ 
+    
+    centroid1 = G.cells.centroids(c1,:); %centroid of neighboring cell 1
+    centroid2 = G.cells.centroids(c2,:); %centroid of neighboring cell 2
+    dist_i = abs((fn2(2)-fn1(2))*centroid1(1)-(fn2(1)-fn1(1))*centroid1(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
+        sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 1 to face
+    dist_j = abs((fn2(2)-fn1(2))*centroid2(1)-(fn2(1)-fn1(1))*centroid2(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
+        sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 2 to face
+    beta_ij(f) = K1*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_i;
+    %faceAreas(i)^2*
+    beta_ji(f) = K2*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_j;
+    %faceAreas(i)^2*
+    O_i(f) = beta_ij(f)/(beta_ij(f)+beta_ji(f));  %omega
+    O_j(f) = beta_ji(f)/(beta_ij(f)+beta_ji(f));
+    hap(f,:) = (beta_ij(f)+beta_ji(f))\...
+        (beta_ij(f)*centroid1'+beta_ji(f)*centroid2'+(K1-K2)*G.faces.normals(f,:)');
+    
+end
+
 end

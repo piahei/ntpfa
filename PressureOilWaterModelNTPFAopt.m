@@ -56,7 +56,7 @@ classdef PressureOilWaterModelNTPFAopt < PressureOilWaterModel
                 intx = model.operators.internalConn;
 
                 nf = size(N, 1);
-                T = computeNonLinearTrans(model.G, model.operators.collocationSet, p);
+                T = computeNonLinearTransForOpt(model.G, model.operators.collocationSet, p);
 %                 T = bsxfun(@times, T, transMult);
                 T1 = T{1}(intx);
                 T2 = T{2}(intx);
