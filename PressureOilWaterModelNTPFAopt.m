@@ -58,9 +58,9 @@ classdef PressureOilWaterModelNTPFAopt < PressureOilWaterModel
                 nf = size(N, 1);
                 T = computeNonLinearTransForOpt(model.G, model.operators.collocationSet, p);
 %                 T = bsxfun(@times, T, transMult);
-                T1 = T{1}(intx);
-                T2 = T{2}(intx);
-                kgrad = @(x) T2.*x(N(:, 2)) - x(N(:,1)).*T1;
+             %   T1 = T{1}(intx);
+             %   T2 = T{2}(intx);
+                kgrad = @(x) T{2}.*x(N(:, 2)) - x(N(:,1)).*T{1};
 %                 C = sparse( [(1:nf)'; (1:nf)'], N, [-T(intx, 1), T(intx, 2)], nf, nc);
 %                 kgrad = @(x) C*x;
             otherwise

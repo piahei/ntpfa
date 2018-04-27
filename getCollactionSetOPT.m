@@ -180,8 +180,10 @@ function coSet = getCollactionSetOPT(G, rock)
         
         end
     end
-    vars = struct('L1_ij',L1_ij,'L2_ij',L2_ij,'L1_ji',L1_ji,'L2_ji',L2_ji,...
-        'L1_bf',L1_bf,'L2_bf',L2_bf,'A_ij',A_ij,'A_ji',A_ji,'A_bf',A_bf);
+    bndryVars = struct('L1_bf',L1_bf,'L2_bf',L2_bf,'A_bf',A_bf);
+    intVars = struct('L1_ij',L1_ij,'L2_ij',L2_ij,'L1_ji',L1_ji,'L2_ji',L2_ji,...
+        'A_ij',A_ij,'A_ji',A_ji);
+    vars = struct('internalVariables',intVars, 'boundaryVariables',bndryVars);
     coSet.variables = vars;
 %     coSet.L_ij = {L1_ij,L2_ij};
 %     coSet.L_ji = {L1_ji,L2_ji};
@@ -223,22 +225,22 @@ function coSet = getCollactionSetOPT(G, rock)
     
    % coSet = storeFaceSet(G, rock, coSet, faceSign, L_face);
     
-    
-    intx = all(G.faces.neighbors > 0, 2);
-    ops = cell(dim, 2);
-    for i = 1:dim
-        for j = 1:2
-            if j == 1
-                exclude = G.faces.neighbors(intx, 2);
-            else
-                exclude = G.faces.neighbors(intx, 1);
-            end
-            gi = coSet.faceSet.globalIndices{j}(:, i);
-            ti =  coSet.faceSet.types{j}(:, i);
-            ops{i, j} = getInterpolationOperator(Pc, Pf, Pn, gi, ti, exclude);
-        end
-    end
-    coSet.faceSet.pressureOperators = ops;
+%     
+%     intx = all(G.faces.neighbors > 0, 2);
+%     ops = cell(dim, 2);
+%     for i = 1:dim
+%         for j = 1:2
+%             if j == 1
+%                 exclude = G.faces.neighbors(intx, 2);
+%             else
+%                 exclude = G.faces.neighbors(intx, 1);
+%             end
+%             gi = coSet.faceSet.globalIndices{j}(:, i);
+%             ti =  coSet.faceSet.types{j}(:, i);
+%             ops{i, j} = getInterpolationOperator(Pc, Pf, Pn, gi, ti, exclude);
+%         end
+%     end
+%     coSet.faceSet.pressureOperators = ops;
 end
 
 function K = getK(rock, cell, dim)

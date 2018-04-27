@@ -69,9 +69,9 @@ L_ji2 = coSet.variables.internalVariables.L2_ji;
 A_ij = coSet.variables.internalVariables.A_ij;
 A_ji = coSet.variables.internalVariables.A_ji;
 
-pressure_i = p.val(nghbrs_i);
+pressure_i = p(nghbrs_i);
 pressure_i = bsxfun(@times,pressure_i,act_ij); %set non-active cells to 0
-pressure_j = p.val(nghbrs_j);
+pressure_j = p(nghbrs_j);
 pressure_j = bsxfun(@times,pressure_j,act_ji); %set non-active cells to 0
 
 L_ij = sum(bsxfun(@times,L_ij1,p.val(c_i)),2)+sum(bsxfun(@times,L_ij2,pressure_i),2);
