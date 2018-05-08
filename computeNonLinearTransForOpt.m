@@ -62,6 +62,8 @@ nghbrs_j = coSet.faceCellNeighbors{2};
 %nghbrs_j = nonzeros(nghbrs_j);
 act_ij = coSet.active.act_cell_ij;
 act_ji = coSet.active.act_cell_ji;
+act_nghbr_i = coSet.active.act_cell_nghbr_i;
+act_nghbr_j = coSet.active.act_cell_nghbr_j;
 L_ij1 = coSet.variables.internalVariables.L1_ij;
 L_ij2 = coSet.variables.internalVariables.L2_ij;
 L_ji1 = coSet.variables.internalVariables.L1_ji;
@@ -81,15 +83,19 @@ L_ji = sum(bsxfun(@times,L_ji1,p.val(c_j)),2)+sum(bsxfun(@times,L_ji2,pressure_j
 
 [mu_ij, mu_ji] = findWeights(L_ij,L_ji);
 
+if any (mu_ij+mu_ji) ~= 1  %how to display??
+    warning('fault in weights')
+end
+
 % Determine eta
-e_ij = mu_ij.*sum(A_ij,2) + mu_ji.*sum(A_ji,2); %IKKE SUM OVER ALLE A! Hvilken kolonne?
-e_ji = mu_ji.*sum(A_ji,2) + mu_ij.*sum(A_ij,2);
+e_ij = mu_ij.*sum(A_ij,2) + mu_ji.*A_ji(act_nghbr_j); 
+e_ji = mu_ji.*sum(A_ji,2) + mu_ij.*A_ij(act_nghbr_i);
 
 % Determine residual
 r = mu_ji.*L_ji - mu_ij.*L_ij;
 a_r = abs(r);
 
-T_1 = e_ij+(a_r+r)./(2*(p(c_i)+eps));  %p as struct or just the value? 
+T_1 = e_ij+(a_r+r)./(2*(p(c_i)+eps));  %p as ADI or just the value? 
 T_2 = e_ji+(a_r-r)./(2*(p(c_j)+eps));
 
 T_face = {T_1,T_2};
