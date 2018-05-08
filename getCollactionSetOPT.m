@@ -6,7 +6,8 @@ function coSet = getCollactionSetOPT(G, rock)
     n_hf = size(G.cells.faces, 1);
     n_f = G.faces.num;
     dim = G.griddim;
-    numFace = 4; %assumed cartesian grid - to be generalized
+    numFace = diff(G.cells.facePos);
+    maxNumFace = max(numFace); %maximum number of faces in cells
     isBF = false(G.faces.num, 1);
     isBF(boundaryFaces(G)) = true;
     n_bf = sum(isBF);
@@ -23,24 +24,25 @@ function coSet = getCollactionSetOPT(G, rock)
     % Once across the face ij and once across ji 
     
     % Vectors from d.o.f. to interpolation points
-    T_all = cell(numFace, 2);  
+    T_all = cell(maxNumFace, 2);  
     [T_all{:}] = deal(zeros(n_f, dim));
     
     % Coefficient matrices for each set of vectors
-    [coeff_ij, coeff_ji]       = deal(zeros(n_if, numFace));
-    coeff_bf = zeros(n_bf,numFace);
+    [coeff_ij, coeff_ji]       = deal(zeros(n_if, maxNumFace));
+    coeff_bf = zeros(n_bf,maxNumFace);
     % Active indicators for each set of vectors/coefficients. A point is
     % said to be active if it is defined in the cell where we want a
     % degree of freedom for a two point method (plus the face between two
     % cells).
-    [act_cell_ij, act_cell_ji]   = deal(false(n_if, numFace));
-    act_cell_bf = false(n_bf,numFace);
+    [act_cell_ij, act_cell_ji, act_cell_nghbr_i, act_cell_nghbr_j] = deal(false(n_if, maxNumFace));
+    act_cell_bf = false(n_bf,maxNumFace);
+    
    
     % Global indices for the pressure values we need to sample for each
     % point. Cell neighbors for cells needed when computing the flux.
     
-    [cn_1, cn_2]     = deal(zeros(n_if, numFace));
-    cn_bf = zeros(n_bf,numFace);
+    [cn_1, cn_2]     = deal(zeros(n_if, maxNumFace));
+    cn_bf = zeros(n_bf,maxNumFace);
     % Type array indicating what the indices actually point to:
     %         1: Cell
     %         2: Face
@@ -62,16 +64,16 @@ function coSet = getCollactionSetOPT(G, rock)
     var = struct('beta_ij',beta_ij,'beta_ji',beta_ji,'O_i',O_i,'O_j',O_j);
     %coSet.variables = var;
     
-    L1_ij = zeros(n_if,numFace);
-    L2_ij = zeros(n_if,numFace);
-    L1_ji = zeros(n_if,numFace);
-    L2_ji = zeros(n_if,numFace);
-    A_ij = zeros(n_if,numFace);
-    A_ji = zeros(n_if,numFace);
+    L1_ij = zeros(n_if,maxNumFace);
+    L2_ij = zeros(n_if,maxNumFace);
+    L1_ji = zeros(n_if,maxNumFace);
+    L2_ji = zeros(n_if,maxNumFace);
+    A_ij = zeros(n_if,maxNumFace);
+    A_ji = zeros(n_if,maxNumFace);
     
-    L1_bf = zeros(n_bf,numFace);
-    L2_bf = zeros(n_bf,numFace);
-    A_bf = zeros(n_bf,numFace);
+    L1_bf = zeros(n_bf,maxNumFace);
+    L2_bf = zeros(n_bf,maxNumFace);
+    A_bf = zeros(n_bf,maxNumFace);
     
     i = 1;  %index for half face
     bf = 0;
@@ -80,6 +82,7 @@ function coSet = getCollactionSetOPT(G, rock)
         if isBF(f)
             bf=bf+1;
             c = N(f,find(N(f,:)~=0)); 
+            nF = numFace(c);
             sgn = 1 - 2*(N(f, 2) == c);
             faceSign(i) = sgn;
             normal = G.faces.normals(f, :);
@@ -95,26 +98,33 @@ function coSet = getCollactionSetOPT(G, rock)
             
             assert(successCell)
             
-            for j = 1:numFace  %numFace(c) -for variable number of faces
+            for j = 1:nF  
                 T_all{j, 1}(f, :) = T(j, :);
             end
             
-            coeff_bf(bf,:) = coeff;
+            coeff_bf(bf,1:nF) = coeff;
             n = N(selfFaces,:); n(n==c)=[]; %neighbors to cell, including "ouside" cells
             act_cell_bf(bf,find(n~=0)) = true; %active cell neighbors
             n(n==0)=1; %set outside cell to 1 to avoid nonlogical indexing
-            cn_bf(bf,:) = n;  
-            A_bf(bf,:) = coeff.*var.O_j(selfFaces);
-            L1_bf(bf,:) = A_bf(bf,:)'.*var.O_i(selfFaces);
-            L2_bf(bf,:) = A_bf(bf,:)'.*var.O_j(selfFaces);
+            cn_bf(bf,1:nF) = n;  
+            A_bf(bf,1:nF) = coeff.*var.O_j(selfFaces);
+            L1_bf(bf,1:nF) = A_bf(bf,1:nF)'.*var.O_i(selfFaces);
+            L2_bf(bf,1:nF) = A_bf(bf,1:nF)'.*var.O_j(selfFaces);
             
         else
+            
             iF = iF+1;
             c1 = N(f,1);  
+            nF_c1 = numFace(c1);
             c2 = N(f,2);  
+            nF_c2 = numFace(c2);
             % Self faces are faces belonging to current cell
             selfFaces1 = gridCellFaces(G, c1);
+            n_i = find(selfFaces1==f);
+            act_cell_nghbr_i(iF,n_i) = true;
             selfFaces2 = gridCellFaces(G, c2);
+            n_j = find(selfFaces2==f);
+            act_cell_nghbr_j(iF,n_j) = true;
             %adjFaces = adjacentFacesForFace(G, f, dim - 1);
             
             % Compute permeability scaled normal vector
@@ -142,20 +152,20 @@ function coSet = getCollactionSetOPT(G, rock)
             
             assert(successCell)
             
-            A_ij(iF,:) = coeff.*var.O_j(selfFaces1);
-            L1_ij(iF,:) = A_ij(iF,:)'.*var.O_i(selfFaces1);
-            L2_ij(iF,:) = A_ij(iF,:)'.*var.O_j(selfFaces1);
+            A_ij(iF,1:nF_c1) = coeff.*var.O_j(selfFaces1);
+            L1_ij(iF,1:nF_c1) = A_ij(iF,1:nF_c1)'.*var.O_i(selfFaces1);
+            L2_ij(iF,1:nF_c1) = A_ij(iF,1:nF_c1)'.*var.O_j(selfFaces1);
             
             
-            for j = 1:numFace
+            for j = 1:nF_c1
                 T_all{j, 1}(f, :) = T(j, :);
             end
             
-            coeff_ij(iF,:) = coeff;
+            coeff_ij(iF,1:nF_c1) = coeff;
             n = N(selfFaces1,:); n(n==c1)=[]; %neighbors to cell, including "ouside" cells
             act_cell_ij(iF,find(n~=0)) = true; %active cell neighbors
             n(n==0)=1; %set outside cell to 1 to avoid nonlogical indexing
-            cn_1(iF,:) = n;  
+            cn_1(iF,1:nF_c1) = n;  
            
             % Collocation accross face direction ji
            
@@ -165,18 +175,18 @@ function coSet = getCollactionSetOPT(G, rock)
             
             assert(successFace)
             
-            A_ji(iF,:) = coeff.*var.O_j(selfFaces2);
-            L1_ji(iF,:) = A_ji(iF,:)'.*var.O_i(selfFaces2);
-            L2_ji(iF,:) = A_ji(iF,:)'.*var.O_j(selfFaces2);
+            A_ji(iF,1:nF_c2) = coeff.*var.O_j(selfFaces2);
+            L1_ji(iF,1:nF_c2) = A_ji(iF,1:nF_c2)'.*var.O_i(selfFaces2);
+            L2_ji(iF,1:nF_c2) = A_ji(iF,1:nF_c2)'.*var.O_j(selfFaces2);
             
-            for j = 1:numFace
+            for j = 1:nF_c2
                 T_all{j, 2}(f, :) = T(j, :);
             end
-            coeff_ji(iF,:) = coeff;
+            coeff_ji(iF,1:nF_c2) = coeff;
             n = N(selfFaces2,:); n(n==c2) = [];
             act_cell_ji(iF,find(n~=0)) = true;
             n(n==0)=1; %set outside cell to 1 to avoid nonlogical indexing
-            cn_2(iF, :) = n; 
+            cn_2(iF, 1:nF_c2) = n; 
         
         end
     end
@@ -196,7 +206,8 @@ function coSet = getCollactionSetOPT(G, rock)
    % coSet.types = {type_ij, type_ji};
     coSet.faceCellNeighbors = {cn_1, cn_2, cn_bf};
     coSet.l = L;
-    coSet.active = struct('act_cell_ij',act_cell_ij,'act_cell_ji',act_cell_ji,'act_cell_bf',act_cell_bf);
+    coSet.active = struct('act_cell_ij',act_cell_ij,'act_cell_ji',act_cell_ji,...
+        'act_cell_nghbr_i',act_cell_nghbr_i,'act_cell_nghbr_j',act_cell_nghbr_j,'act_cell_bf',act_cell_bf);
     
     
 %     exclude_cell = struct('ix', faceNo, 'type', 2);
@@ -276,6 +287,7 @@ end
 
 function [T, types, coefficients, globIx, ok] = collocateSetOPT(G,cpt,faces,hap, l)
    % [pts, typ, glob] = getCandidatePointsOPT(G,faces);
+    warning('off','MATLAB:singularMatrix');
     [T, ix, coefficients, ok] = OPTgetSetForHF(cpt, l, hap);
     globIx = faces(ix); 
     %types = typ(ix);
@@ -314,7 +326,7 @@ end
 
 function [T, ixSet, coeff, done] = OPTgetSetForHF(center,l,hap)
 done = false;
-
+ixSet = (1:1:length(hap));
 %dim = size(pts,2);
 N = size(hap,1);  %numper of faces to cell
 coeff = zeros(N+1,1);
@@ -337,16 +349,15 @@ c(end) = k;
 %         nComb = (N-1)*N;
 %     end
 
+% xl = center + l_u;  %???
+% xi = bsxfun(@plus, center, t_u');    %???
+% 
+% dist = bsxfun(@minus, xl, xi);
+% %     dist = cross(xi, repmat(xl, size(xi, 1), 1));
+% dist = sum(dist.^2, 2);
+% dist = sqrt(sum(dist.^2, 2));
 
-xl = center + l_u;  %???
-xi = bsxfun(@plus, center, t_u');    %???
-
-dist = bsxfun(@minus, xl, xi);
-%     dist = cross(xi, repmat(xl, size(xi, 1), 1));
-dist = sum(dist.^2, 2);
-dist = sqrt(sum(dist.^2, 2));
-
-[~, ixSet] = sort(dist);
+%[~, ixSet] = sort(dist);
 
 
 
@@ -372,11 +383,11 @@ end
 
 T = t(ixSet',:);
 
-for j=1:length(ixSet)
-    if coeff(j) == 0
-        ixSet(ixSet == j) = [];  %unnecessary? keep order
-    end
-end
+% for j=1:length(ixSet)
+%     if coeff(j) == 0
+%         ixSet(ixSet == j) = [];  %unnecessary? keep order
+%     end
+% end
 
 end
 
@@ -635,7 +646,7 @@ intFace(bFace) = [];
 n_if = size(intFace,1); %number of internal faces
 
 hap = zeros(noFaces,2);
-%hap(bFace,:) = G.faces.centroids(bFace,:); %hap for bf is equal to centroid
+hap(bFace,:) = G.faces.centroids(bFace,:); %hap for bf is equal to centroid
 
 N = G.faces.neighbors;
 nodePos = G.faces.nodePos;
@@ -703,13 +714,24 @@ for i = 1:n_if  %over all internal faces
         sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 2 to face
     beta_ij(f) = K1*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_i;
     %faceAreas(i)^2*
+    if beta_ij(f) == inf
+        beta_ij(f) = 0;
+    end
     beta_ji(f) = K2*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_j;
     %faceAreas(i)^2*
+    if beta_ji(f) == inf
+        beta_ji(f) = 0;
+    end
+    
     O_i(f) = beta_ij(f)/(beta_ij(f)+beta_ji(f));  %omega
     O_j(f) = beta_ji(f)/(beta_ij(f)+beta_ji(f));
     hap(f,:) = (beta_ij(f)+beta_ji(f))\...
         (beta_ij(f)*centroid1'+beta_ji(f)*centroid2'+(K1-K2)*G.faces.normals(f,:)');
-    
+    if any(isnan(hap(f,:)))
+        hap(f,:) = G.faces.centroids(f,:);
+    end
+        
 end
+
 
 end
