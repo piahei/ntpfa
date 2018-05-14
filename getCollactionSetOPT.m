@@ -556,12 +556,6 @@ function [C, D] = getCoefficients2D(t1, t2, l)
 %     C = [D1, D2]./D;
 end
 
-function flag = getJumpFlag(G, rock)
-    flag = true(G.faces.num, 1);
-    N = G.faces.neighbors;
-    intx = all(N > 0, 2);
-    flag(intx) = ~all(rock.perm(N(intx, 1), :) == rock.perm(N(intx, 2), :), 2);
-end
 
 function [C, D] = getCoefficients3D(t1, t2, t3, l)
     D1 = computeDCoefficient3D(l, t2, t3);
@@ -657,16 +651,18 @@ beta_ji = zeros(noFaces,1);
 O_i = zeros(noFaces,1); %omega_ij (left zero for boundary)
 O_j = zeros(noFaces,1); %omega_ji
 
+dist = @(p1,p2,x) abs((p2(2)-p2(2))*x(1)-(p2(1)-p1(1))*x(2)+p2(1)*p1(2)-p2(2)*p1(1))/...
+        sqrt((p2(2)-p1(2))^2+(p2(1)-p1(1))^2); 
+
 for i = 1:n_if  %over all internal faces
     f = intFace(i);
     c1 = N(f,1); %cell neighbor 1
     c2 = N(f,2); %cell neighbor 2
     
     node = nodes(nodePos(f) : nodePos(f+1)-1, :);
-    node1 = node(1);
-    node2 = node(2);
-    fn1 = G.nodes.coords(node1,:);  %coordinates to node 1
-    fn2 = G.nodes.coords(node2,:);  %coordinates to node 2
+    
+    fn1 = G.nodes.coords(node(1),:);  %coordinates to node 1
+    fn2 = G.nodes.coords(node(2),:);  %coordinates to node 2
     
     % for boundary faces, permeability is mirrored outside boundary
 %     if c1 == 0 
@@ -701,17 +697,19 @@ for i = 1:n_if  %over all internal faces
 %         
 %     end
     
-
+    % Find permeability
     K1 = getK(rock,c1,dim);
     K2 = getK(rock,c2,dim);
  
+    % Centroids of neighboring cells:
+    centroid1 = G.cells.centroids(c1,:); 
+    centroid2 = G.cells.centroids(c2,:); 
     
-    centroid1 = G.cells.centroids(c1,:); %centroid of neighboring cell 1
-    centroid2 = G.cells.centroids(c2,:); %centroid of neighboring cell 2
-    dist_i = abs((fn2(2)-fn1(2))*centroid1(1)-(fn2(1)-fn1(1))*centroid1(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
-        sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 1 to face
-    dist_j = abs((fn2(2)-fn1(2))*centroid2(1)-(fn2(1)-fn1(1))*centroid2(2)+fn2(1)*fn1(2)-fn2(2)*fn1(1))/...
-        sqrt((fn2(2)-fn1(2))^2+(fn2(1)-fn1(1))^2);    % shortest distance from cell centroid 2 to face
+    % Shortest distanse from cell centroids to face:
+    dist_i = dist(fn1,fn2,centroid1);  
+    dist_j = dist(fn1,fn2,centroid2);    
+    
+    % Calculate beta
     beta_ij(f) = K1*(G.faces.normals(f,:)*G.faces.normals(f,:)')/dist_i;
     %faceAreas(i)^2*
     if beta_ij(f) == inf
@@ -723,8 +721,11 @@ for i = 1:n_if  %over all internal faces
         beta_ji(f) = 0;
     end
     
-    O_i(f) = beta_ij(f)/(beta_ij(f)+beta_ji(f));  %omega
+    % Calculate omega:
+    O_i(f) = beta_ij(f)/(beta_ij(f)+beta_ji(f));  
     O_j(f) = beta_ji(f)/(beta_ij(f)+beta_ji(f));
+    
+    % Calculate hap:   %HAP OUTSIDE GRID FOR SEAMOUNT!?!
     hap(f,:) = (beta_ij(f)+beta_ji(f))\...
         (beta_ij(f)*centroid1'+beta_ji(f)*centroid2'+(K1-K2)*G.faces.normals(f,:)');
     if any(isnan(hap(f,:)))

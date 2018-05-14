@@ -556,12 +556,6 @@ function [C, D] = getCoefficients2D(t1, t2, l)
 %     C = [D1, D2]./D;
 end
 
-function flag = getJumpFlag(G, rock)
-    flag = true(G.faces.num, 1);
-    N = G.faces.neighbors;
-    intx = all(N > 0, 2);
-    flag(intx) = ~all(rock.perm(N(intx, 1), :) == rock.perm(N(intx, 2), :), 2);
-end
 
 function [C, D] = getCoefficients3D(t1, t2, t3, l)
     D1 = computeDCoefficient3D(l, t2, t3);

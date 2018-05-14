@@ -1,4 +1,4 @@
-function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure) 
+function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure,N) 
     if min(double(cellPressure)) < 0
         warning('Negative pressure in cells. Will fall back to linear TPFA.');
     end
@@ -9,10 +9,10 @@ function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure)
     isBF(boundaryFaces(G)) = true;
     isIF = ~isBF;
     
-    T_face = computeTransIntFaces(G,coSet,cellPressure);
+    T_if = computeTransIntFaces(G,coSet,cellPressure,N);
     T_bf = computeTransBoundaryFaces(G,coSet,cellPressure);
     
-    T = {T_face{1},T_face{2},T_bf};
+    T = {T_if{1},T_if{2},T_bf};
     
     
     
@@ -49,17 +49,14 @@ function T_bf = computeTransBoundaryFaces(G,coSet,p)
  
  end
 
-function T_face = computeTransIntFaces(G,coSet,p)
+function T_face = computeTransIntFaces(G,coSet,p,N)
 
-isIF = true(G.faces.num, 1);
-isIF(boundaryFaces(G)) = false;
-c_i = G.faces.neighbors(isIF,1);
-c_j = G.faces.neighbors(isIF,2);
+dim = G.griddim;
+c_i = N(:,1);
+c_j = N(:,2);
 
 nghbrs_i = coSet.faceCellNeighbors{1};  
-%nghbrs_i = nonzeros(nghbrs_i);already nonzero! 
 nghbrs_j = coSet.faceCellNeighbors{2};
-%nghbrs_j = nonzeros(nghbrs_j);
 act_ij = coSet.active.act_cell_ij;
 act_ji = coSet.active.act_cell_ji;
 act_nghbr_i = coSet.active.act_cell_nghbr_i;
@@ -71,17 +68,20 @@ L_ji2 = coSet.variables.internalVariables.L2_ji;
 A_ij = coSet.variables.internalVariables.A_ij;
 A_ji = coSet.variables.internalVariables.A_ji;
 
-pressure_i = p.val(nghbrs_i);
-pressure_i = bsxfun(@times,pressure_i,act_ij); %set non-active cells to 0
-pressure_j = p.val(nghbrs_j);
-pressure_j = bsxfun(@times,pressure_j,act_ji); %set non-active cells to 0
+ 
+ pressure_i = p.val(nghbrs_i).*act_ij; %set non-active cells to false
+ pressure_j = p.val(nghbrs_j).*act_ji; %set non-active cells to false 
+ 
+ L_ij = double2ADI(sum(L_ij1,2).*p.val(c_i)+sum(L_ij2.*pressure_i,2),p);
+ L_ji = double2ADI(sum(L_ji1,2).*p.val(c_j)+sum(L_ji2.*pressure_j,2),p);
 
-L_ij = sum(bsxfun(@times,L_ij1,p.val(c_i)),2)+sum(bsxfun(@times,L_ij2,pressure_i),2);
-L_ji = sum(bsxfun(@times,L_ji1,p.val(c_j)),2)+sum(bsxfun(@times,L_ji2,pressure_j),2);
-
+ 
+%[LL{:}] = deal(double2ADI(zeros(length(N),1),p));
+%[L_ij, L_ji] = deal(LL);
+ 
 % Determine weights
 
-[mu_ij, mu_ji] = findWeights(L_ij,L_ji);
+[mu_ij, mu_ji] = findWeights(L_ij.val,L_ji.val);
 
 if any (mu_ij+mu_ji) ~= 1  %how to display??
     warning('fault in weights')
@@ -95,8 +95,8 @@ e_ji = mu_ji.*sum(A_ji,2) + mu_ij.*A_ij(act_nghbr_i);
 r = mu_ji.*L_ji - mu_ij.*L_ij;
 a_r = abs(r);
 
-T_1 = e_ij+(a_r+r)./(2*(p(c_i)+eps));  %p as struct or just the value? 
-T_2 = e_ji+(a_r-r)./(2*(p(c_j)+eps));
+T_1 = e_ij+(a_r+r)./((p(c_i)+eps).*2);   
+T_2 = e_ji+(a_r-r)./((p(c_j)+eps).*2);
 
 T_face = {T_1,T_2};
 
