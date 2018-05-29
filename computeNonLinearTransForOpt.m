@@ -36,7 +36,7 @@ function T_bf = computeTransBoundaryFaces(G,coSet,p)
  
  isBF = false(G.faces.num, 1);
  isBF(boundaryFaces(G)) = true;
- nghbrs = coSet.faceCellNeighbors{3};
+ nghbrs = coSet.cellNeighbors{3};
  pressure = p.val(nghbrs);
  pressure = bsxfun(@times,pressure,act_cells); 
  c = sum(G.faces.neighbors(isBF,:),2);
@@ -55,10 +55,10 @@ dim = G.griddim;
 c_i = N(:,1);
 c_j = N(:,2);
 
-nghbrs_i = coSet.faceCellNeighbors{1};  
-nghbrs_j = coSet.faceCellNeighbors{2};
-act_ij = coSet.active.act_cell_ij;
-act_ji = coSet.active.act_cell_ji;
+cn_i = coSet.cellNeighbors{1};  
+cn_j = coSet.cellNeighbors{2};
+act_L_ij = coSet.active.act_L_ij;
+act_L_ji = coSet.active.act_L_ji;
 act_nghbr_i = coSet.active.act_cell_nghbr_i;
 act_nghbr_j = coSet.active.act_cell_nghbr_j;
 L_ij1 = coSet.variables.internalVariables.L1_ij;
@@ -69,11 +69,11 @@ A_ij = coSet.variables.internalVariables.A_ij;
 A_ji = coSet.variables.internalVariables.A_ji;
 
  
- pressure_i = p.val(nghbrs_i).*act_ij; %set non-active cells to false
- pressure_j = p.val(nghbrs_j).*act_ji; %set non-active cells to false 
+pressure_i = p.val(cn_i).*act_L_ij; %set non-active cells to false
+pressure_j = p.val(cn_j).*act_L_ji; %set non-active cells to false 
  
- L_ij = double2ADI(sum(L_ij1,2).*p.val(c_i)+sum(L_ij2.*pressure_i,2),p);
- L_ji = double2ADI(sum(L_ji1,2).*p.val(c_j)+sum(L_ji2.*pressure_j,2),p);
+L_ij = double2ADI(sum(L_ij1,2).*p.val(c_i)+sum(L_ij2.*pressure_i,2),p);
+L_ji = double2ADI(sum(L_ji1,2).*p.val(c_j)+sum(L_ji2.*pressure_j,2),p);
 
  
 %[LL{:}] = deal(double2ADI(zeros(length(N),1),p));
