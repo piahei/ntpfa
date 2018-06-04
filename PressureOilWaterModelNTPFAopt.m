@@ -60,6 +60,7 @@ classdef PressureOilWaterModelNTPFAopt < PressureOilWaterModel
              %   T1 = T{1}(intx);
              %   T2 = T{2}(intx);
                 kgrad = @(x) T{2}.*x(N(:,2)) - x(N(:,1)).*T{1};
+                %kgrad = @(x) T{4}.*x(N(:,2))-x(N(:,1)).*T{3};
 %                 C = sparse( [(1:nf)'; (1:nf)'], N, [-T(intx, 1), T(intx, 2)], nf, nc);
 %                 kgrad = @(x) C*x;
             otherwise

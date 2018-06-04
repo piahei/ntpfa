@@ -2,53 +2,53 @@ mrstModule add book pia ad-core ad-blackoil ad-props solvers...
                blackoil-sequential mimetic incomp mpfa streamlines mrst-gui...
                vemmech;
 %% Standard cart grid ------------------------------------------------------
-% 
-% n = 5;
+
+% n = 10;
 % G = computeGeometry(cartGrid([n,n], [1,1]));
 % G = twister(G);
 % rock = makeRock(G, 100*milli*darcy, 0.002);
 % %%Anisotropic perm:-----------------
-% % K = [1, 0; 0, 100]*100*milli*darcy;
-% % R = @(t) [cos(t), -sin(t); sin(t), cos(t)];
-% % t = pi/8;
-% % K = R(t)*K*R(t)';
-% % rock.perm = repmat([K(1,1), K(1,2), K(2,2)], G.cells.num, 1);
+% K = [1, 0; 0, 100]*100*milli*darcy;
+% R = @(t) [cos(t), -sin(t); sin(t), cos(t)];
+% t = pi/8;
+% K = R(t)*K*R(t)';
+% rock.perm = repmat([K(1,1), K(1,2), K(2,2)], G.cells.num, 1);
 % %-----------------------------------
 % [src,W,bc] = deal([]);
 % bc = pside(bc, G, 'west', 150*barsa, 'sat', [1,0]);
-% bc = pside(bc, G, 'east', 50*barsa, 'sat', [1,0]);
+% bc = pside(bc, G, 'east', 0*barsa, 'sat', [1,0]);
 
 %% glued grid --------------------------------------------------------------
-
-G1 = computeGeometry(cartGrid([2 2],[1,1]));
-G2 = computeGeometry(cartGrid([3,3],[1,1]));
-G = glue2DGrid(G1,translateGrid(G2,[1,0]));
-G = computeGeometry(G);
-rock = makeRock(G,100*milli*darcy, 0.002);
-[src,W,bc] = deal([]);
-
-% bc = addBC(bc,[1,3],'pressure',0,'sat',[1]);
-% bc = addBC(bc,[13,16,19],'pressure',50*barsa,'sat',[1]);
-
-x = [0, 2];
-for i = 1 : 2
-    faces = find(abs(G.faces.centroids(:, 1) - x(i)) < eps);
-    bc = addBC(bc, faces, 'pressure', 0,'sat',[1]);
-%     bc{i} = addBC([],faces,'pressure',0);
-%     bc{i} = rmfield(bc{i}, 'type');
-%     bc{i} = rmfield(bc{i}, 'sat');
-end
-y = [0, 1];
-for i = 1 : 2
-    faces = find(abs(G.faces.centroids(:, 2) - y(i)) < eps);
-    bc = addBC(bc,faces,'pressure',50*barsa,'sat',[1]);
-%     bc{i + 2} = addBC([], faces, 'pressure', 50*barsa);
-%     bc{i + 2} = rmfield(bc{i + 2}, 'type');
-%     bc{i + 2} = rmfield(bc{i + 2}, 'sat');
-end
+% 
+% G1 = computeGeometry(cartGrid([1 2],[1,1]));
+% G2 = computeGeometry(cartGrid([1,3],[1,1]));
+% G = glue2DGrid(G1,translateGrid(G2,[1,0]));
+% G = computeGeometry(G);
+% rock = makeRock(G,100*milli*darcy, 0.002);
+% [src,W,bc] = deal([]);
+% 
+% % bc = addBC(bc,[1,3],'pressure',0,'sat',[1]);
+% % bc = addBC(bc,[13,16,19],'pressure',50*barsa,'sat',[1]);
+% 
+% x = [0, 2];
+% for i = 1 : 2
+%     faces = find(abs(G.faces.centroids(:, 1) - x(i)) < eps);
+%     bc = addBC(bc, faces, 'pressure', 0,'sat',[1]);
+% %     bc{i} = addBC([],faces,'pressure',0);
+% %     bc{i} = rmfield(bc{i}, 'type');
+% %     bc{i} = rmfield(bc{i}, 'sat');
+% end
+% y = [0, 1];
+% for i = 1 : 2
+%     faces = find(abs(G.faces.centroids(:, 2) - y(i)) < eps);
+%     bc = addBC(bc,faces,'pressure',100*barsa,'sat',[1]);
+% %     bc{i + 2} = addBC([], faces, 'pressure', 50*barsa);
+% %     bc{i + 2} = rmfield(bc{i + 2}, 'type');
+% %     bc{i + 2} = rmfield(bc{i + 2}, 'sat');
+% end
 % % --------------------------------------------------------------------------
 %% Skew grid ---------------------------------------------------------------
-% G = cartGrid([21,20],[2,1]);
+% G = cartGrid([41,20],[2,1]);
 % makeSkew = @(c) c(:,1) + .4*(1-(c(:,1)-1).^2).*(1-c(:,2));
 % G.nodes.coords(:,1) = 2*makeSkew(G.nodes.coords);
 % G = computeGeometry(G);
@@ -59,40 +59,40 @@ end
 % src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
 
 %% Vemmech grid -------------------------------------------------------------
-% opt = struct('L'         , [1 1], ...
-%              'cartDims'  , [2 2], ...
-%              'grid_type' , 'square', ...
-%              'disturb'   , 0.1, ... %parameter for disturbing grid
-%              'E'         , 4e7, ...  %youngs modolo
-%              'nu'        , 0.44);% poiso ratio
-% 
-% G = squareGrid(opt.cartDims,opt.L,'grid_type','boxes2','disturb',opt.disturb);
-% G = computeGeometry(G);
-% 
-% rock = makeRock(G, 100*milli*darcy,0.002);
-% 
-% [Lx, Ly] = deal(opt.L(1), opt.L(2));
-% assert(G.griddim == 2);
-% x = [0, Lx];
-% 
-% [bc,src,W]=deal([]);
-% 
-% % bc = cell(4,1);
-% for i = 1 : 2
-%     faces = find(abs(G.faces.centroids(:, 1) - x(i)) < eps);
-%     bc = addBC(bc, faces, 'pressure', 0,'sat',[1]);
-% %     bc{i} = addBC([],faces,'pressure',0);
-% %     bc{i} = rmfield(bc{i}, 'type');
-% %     bc{i} = rmfield(bc{i}, 'sat');
-% end
-% y = [0, Ly];
-% for i = 1 : 2
-%     faces = find(abs(G.faces.centroids(:, 2) - y(i)) < eps);
-%     bc = addBC(bc,faces,'pressure',50*barsa,'sat',[1]);
-% %     bc{i + 2} = addBC([], faces, 'pressure', 50*barsa);
-% %     bc{i + 2} = rmfield(bc{i + 2}, 'type');
-% %     bc{i + 2} = rmfield(bc{i + 2}, 'sat');
-% end
+opt = struct('L'         , [2 2], ...
+             'cartDims'  , [4 4], ...
+             'grid_type' , 'square', ...
+             'disturb'   , 0.1, ... %parameter for disturbing grid
+             'E'         , 4e7, ...  %youngs modolo
+             'nu'        , 0.44);% poiso ratio
+
+G = squareGrid(opt.cartDims,opt.L,'grid_type','mixed2','disturb',opt.disturb);
+G = computeGeometry(G);
+
+rock = makeRock(G, 100*milli*darcy,0.002);
+
+[Lx, Ly] = deal(opt.L(1), opt.L(2));
+assert(G.griddim == 2);
+x = [0, Lx];
+
+[bc,src,W]=deal([]);
+
+% bc = cell(4,1);
+for i = 1 : 2
+    faces = find(abs(G.faces.centroids(:, 1) - x(i)) < eps);
+    bc = addBC(bc, faces, 'pressure', 0,'sat',[1]);
+%     bc{i} = addBC([],faces,'pressure',0);
+%     bc{i} = rmfield(bc{i}, 'type');
+%     bc{i} = rmfield(bc{i}, 'sat');
+end
+y = [0, Ly];
+for i = 1 : 2
+    faces = find(abs(G.faces.centroids(:, 2) - y(i)) < eps);
+    bc = addBC(bc,faces,'pressure',50*barsa,'sat',[1]);
+%     bc{i + 2} = addBC([], faces, 'pressure', 50*barsa);
+%     bc{i + 2} = rmfield(bc{i + 2}, 'type');
+%     bc{i + 2} = rmfield(bc{i + 2}, 'sat');
+end
 
 %---------------------------------------------------------------
 
@@ -191,9 +191,11 @@ model2 = PressureOilWaterModelNTPFA(G,rock,fluid);
 state = incompSinglePhaseNTPFA(model, state0,'bc', bc, 'src',src);
 state2 = incompSinglePhaseNTPFA(model2,state0,'bc',bc,'src',src);
 
-clf
+
 figure(1)
+clf
 subplot(1,2,1)
+
 plotCellData(G,state.pressure)
 % hold on
 % plot([.5 2 3.5], [.025 .975 .025],'.','Color',[.9 .9 .9],'MarkerSize',16);
@@ -211,7 +213,9 @@ axis equal
 h=colorbar('Location','South');
 %plotToolbar(G, state)
 
+
 figure(2)
+clf
 x = G.cells.centroids(:,1);
 plot(x,state.pressure,'.');
 hold on
