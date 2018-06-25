@@ -4,10 +4,10 @@ function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure,N)
     end
     flux = nan;
     
-    n_f = G.faces.num;
-    isBF = false(n_f, 1);
-    isBF(boundaryFaces(G)) = true;
-    isIF = ~isBF;
+%     n_f = G.faces.num;
+%     isBF = false(n_f, 1);
+%     isBF(boundaryFaces(G)) = true;
+%     isIF = ~isBF;
     
     T_if = computeTransIntFaces(G,coSet,cellPressure,N);
     T_bf = computeTransBoundaryFaces(G,coSet,cellPressure);
@@ -134,33 +134,7 @@ w_ji(zeroRow) = 0.5;
 
 end
 
-% function d = computeWeight(lnorm, c, p, exclude)
-%     d = 0;
-%     for i = 1:numel(p)
-%         d = d + p{i}.*c(:, i).*(~exclude(:, i));
-%     end
-%     d = d.*lnorm;
-% end
-% 
-% function d = computeWeight2(lnorm, c, p)
-%     d = 0;
-%     for i = 1:numel(p)
-%         d = d + p{i}.*c(:, i);
-%     end
-%     d = d.*lnorm;
-% end
-% 
-% function [u_c, u_f] = get_mu(d_c, d_f)
-%     thold = 0;
-%     bad = d_c <= thold | d_f <= thold;
-%     d_c(bad) = 1;
-%     d_f(bad) = 1;
-%     
-%     d_tot = d_c + d_f;
-%     % intentional swapping of terms
-%     u_c = d_f./d_tot;
-%     u_f = d_c./d_tot;
-% end
+
 % 
 % function T = computeJumpTransmissibilities(G, coSet, cellPressure)
 %     cellNo = getCellNoFaces(G);

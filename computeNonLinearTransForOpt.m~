@@ -4,10 +4,10 @@ function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure,N)
     end
     flux = nan;
     
-    n_f = G.faces.num;
-    isBF = false(n_f, 1);
-    isBF(boundaryFaces(G)) = true;
-    isIF = ~isBF;
+%     n_f = G.faces.num;
+%     isBF = false(n_f, 1);
+%     isBF(boundaryFaces(G)) = true;
+%     isIF = ~isBF;
     
     T_if = computeTransIntFaces(G,coSet,cellPressure,N);
     T_bf = computeTransBoundaryFaces(G,coSet,cellPressure);
@@ -72,6 +72,7 @@ pressure_j = p.val(cn_j).*act_ji; %set non-active cells to false
  
 L_ij = double2ADI(sum(A_ij.*pressure_i,2),p);
 L_ji = double2ADI(sum(A_ji.*pressure_j,2),p);
+
 L_ij_temp = double2ADI(sum(L_ij1,2).*p.val(c_i)+sum(L_ij2.*pressure_i,2),p);
 L_ji_temp = double2ADI(sum(L_ji1,2).*p.val(c_j)+sum(L_ji2.*pressure_j,2),p);
 
@@ -90,10 +91,10 @@ end
 % Determine eta
 
 e_ij = mu_ij.*sum(A_ij,2) + mu_ji.*sum(A_ji.*~act_ji,2); 
-e_ji = mu_ji.*sum(A_ji,2) + mu_ij.*A_ij(~act_ij);
+e_ji = mu_ji.*sum(A_ji,2) + mu_ij.*sum(A_ij.*~act_ij,2);
 
-e_ij_temp = mu_ij_temp.*sum(A_ij,2)+mu_ji_temp.*A_ji(~act_ji);
-e_ji_temp = mu_ji_temp.*sum(A_ji,2)+mu_ij_temp.*A_ij(~act_ij);
+e_ij_temp = mu_ij_temp.*sum(A_ij,2)+mu_ji_temp.*sum(A_ji.*~act_ji,2);
+e_ji_temp = mu_ji_temp.*sum(A_ji,2)+mu_ij_temp.*sum(A_ij.*~act_ij,2);
 
 % Determine residual
 r = mu_ji.*L_ji - mu_ij.*L_ij;
@@ -133,33 +134,7 @@ w_ji(zeroRow) = 0.5;
 
 end
 
-% function d = computeWeight(lnorm, c, p, exclude)
-%     d = 0;
-%     for i = 1:numel(p)
-%         d = d + p{i}.*c(:, i).*(~exclude(:, i));
-%     end
-%     d = d.*lnorm;
-% end
-% 
-% function d = computeWeight2(lnorm, c, p)
-%     d = 0;
-%     for i = 1:numel(p)
-%         d = d + p{i}.*c(:, i);
-%     end
-%     d = d.*lnorm;
-% end
-% 
-% function [u_c, u_f] = get_mu(d_c, d_f)
-%     thold = 0;
-%     bad = d_c <= thold | d_f <= thold;
-%     d_c(bad) = 1;
-%     d_f(bad) = 1;
-%     
-%     d_tot = d_c + d_f;
-%     % intentional swapping of terms
-%     u_c = d_f./d_tot;
-%     u_f = d_c./d_tot;
-% end
+
 % 
 % function T = computeJumpTransmissibilities(G, coSet, cellPressure)
 %     cellNo = getCellNoFaces(G);
