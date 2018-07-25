@@ -1,20 +1,23 @@
 %%3D example
 
-% [nx,ny,nz] = deal(20, 20, 5);
-% [Lx,Ly,Lz] = deal(1000, 1000, 50);
-
-[nx,ny,nz] = deal(2, 2, 2);
+[nx,ny,nz] = deal(10, 10, 5);
 [Lx,Ly,Lz] = deal(1, 1, 1);
+
+%[nx,ny,nz] = deal(4, 4, 4);
+%[Lx,Ly,Lz] = deal(1, 1, 1);
 
 G = cartGrid([nx ny nz], [Lx Ly Lz]);
 G.nodes.coords(:,3) = G.nodes.coords(:,3) + 500;
+G = twister(G);
 G = computeGeometry(G);
+
 bc=[];
 % bc = fluxside(bc, G, 'EAST', 5e3*meter^3/day);
 % bc = pside (bc, G, 'WEST', 50*barsa);
 
-bc = pside(bc,G,'EAST', 0);
-bc = pside(bc,G,'WEST', 50*barsa);
+bc = pside(bc,G,'WEST', 0);
+bc = pside(bc,G,'EAST', 200*barsa);
+
 
 src = [];
 
@@ -31,11 +34,14 @@ state2 = incompSinglePhaseNTPFA(model2,state0,'bc',bc,'src',src);
 figure(1)
 clf
 plotCellData(G,state.pressure)
+axis equal tight
+%title('Linear pressure drop')
 view(-125,20),camproj perspective
 colorbar('Location','Southoutside');
 
 figure(2)
 clf
 plotCellData(G,state2.pressure)
+title('NTPFA lin')
 view(-125,20),camproj perspective
 colorbar('Location','Southoutside');

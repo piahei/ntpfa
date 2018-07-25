@@ -1,115 +1,83 @@
-function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure,N) 
-    if min(double(cellPressure)) < 0
-        warning('Negative pressure in cells. Will fall back to linear TPFA.');
-    end
-    flux = nan;
-    
-%     n_f = G.faces.num;
-%     isBF = false(n_f, 1);
-%     isBF(boundaryFaces(G)) = true;
-%     isIF = ~isBF;
-    
-    T_if = computeTransIntFaces(G,coSet,cellPressure,N);
-    T_bf = computeTransBoundaryFaces(G,coSet,cellPressure);
-    
-    T = {T_if{1},T_if{2},T_if{3},T_if{4},T_bf};
-    
-    
-    
-    %weights = computeWeights(G,coSet,cellPressure);
-    %T_hf = computeJumpTransmissibilities(G, coSet, cellPressure);
-    %T_face = computeContTransmissibilities(G, coSet, cellPressure);
-    
-    %jump = coSet.jumpFace;
-%     T = T_face;
-%     for i = 1:2
-%         T{i} = T_hf{i}.*jump + ~jump.*T_face{i};
-%     end
+function [T, flux] = computeNonLinearTransForOpt(G, coSet, cellPressure,N)
+% compute nonlinear transmissibilities for NTPFA using optimization
+% in preprocessing step. Function is called in PressureOilWaterModelNTPFAopt
+% SYNOPSIS:
+%   [T,flux] = computeNonLinearTransForOpt(G, coSet, cellPressure, N)
+%
+% PARAMETERS:
+%   G            - Grid structure as described by grid_structure.
+%   coSet        - collocation set as produced by getCollactionSetOPT
+%   cellPressure - ADI of lengt equal to number of cells with
+%                  pressure values
+%   N            - number-of-internal-faces x 2 vector with neighbors to
+%                  each internal face
+%
+% RETURNS:
+%   T    - structure with transmissibilities both ways across internal faces
+%   flux - flux given as NaN
+%
+% SEE ALSO:
+%   'getCollactionSetOPT', 'PressureOilWaterModelNTPFAopt'.
+
+%{
+Written by Pia-Kristina Heigrestad, 2018 
+%}
+
+if min(double(cellPressure)) < 0
+    warning('Negative pressure in cells. Will fall back to linear TPFA.');
+end
+flux = nan;
+
+T_if = computeTransIntFaces(coSet,cellPressure,N);
+%T_bf = computeTransBoundaryFaces(G,coSet,cellPressure);
+
+T = {T_if{1},T_if{2}};
+
 end
 
-function T_bf = computeTransBoundaryFaces(G,coSet,p)
+function T_face = computeTransIntFaces(coSet,p,N)
 
- L1 = coSet.variables.boundaryVariables.L1_bf;
- L2 = coSet.variables.boundaryVariables.L2_bf;
- A = coSet.variables.boundaryVariables.A_bf;
- act_cells = coSet.active.act_cell_bf;
- 
- isBF = false(G.faces.num, 1);
- isBF(boundaryFaces(G)) = true;
- nghbrs = coSet.cellNeighbors{3};
- pressure = p.val(nghbrs);
- pressure = bsxfun(@times,pressure,act_cells); 
- c = sum(G.faces.neighbors(isBF,:),2);
- 
- L = sum(bsxfun(@times,L1,p.val(c)),2)+sum(bsxfun(@times,L2,pressure),2);
- 
- e = sum(A,2);
- 
- T_bf = e+(abs(L)+L)./(2*(p(c)+eps));
- 
- end
-
-function T_face = computeTransIntFaces(G,coSet,p,N)
-
-dim = G.griddim;
 c_i = N(:,1);
 c_j = N(:,2);
 
-cn_i = coSet.cellNeighbors{1};  
+cn_i = coSet.cellNeighbors{1};
 cn_j = coSet.cellNeighbors{2};
 act_ij = coSet.active.act_ij;
 act_ji = coSet.active.act_ji;
-L_ij1 = coSet.variables.internalVariables.L1_ij;
-L_ij2 = coSet.variables.internalVariables.L2_ij;
-L_ji1 = coSet.variables.internalVariables.L1_ji;
-L_ji2 = coSet.variables.internalVariables.L2_ji;
-A_ij = coSet.variables.internalVariables.A_ij;
-A_ji = coSet.variables.internalVariables.A_ji;
+A_ij = coSet.variables.A_ij;
+A_ji = coSet.variables.A_ji;
 
- 
 pressure_i = p.val(cn_i).*act_ij; %set non-active cells to false
-pressure_j = p.val(cn_j).*act_ji; %set non-active cells to false 
- 
+pressure_j = p.val(cn_j).*act_ji; %set non-active cells to false
+
 L_ij = double2ADI(sum(A_ij.*pressure_i,2),p);
 L_ji = double2ADI(sum(A_ji.*pressure_j,2),p);
 
-L_ij_temp = double2ADI(sum(L_ij1,2).*p.val(c_i)+sum(L_ij2.*pressure_i,2),p);
-L_ji_temp = double2ADI(sum(L_ji1,2).*p.val(c_j)+sum(L_ji2.*pressure_j,2),p);
-
- 
-%[LL{:}] = deal(double2ADI(zeros(length(N),1),p));
-%[L_ij, L_ji] = deal(LL);
- 
-% Determine weights
+% Determine weights:
 
 [mu_ij, mu_ji] = findWeights(L_ij.val,L_ji.val);
-[mu_ij_temp,mu_ji_temp] = findWeights(L_ij_temp.val,L_ji_temp.val);
-if any (mu_ij+mu_ji) ~= 1  %how to display??
+
+%debugging
+if any (mu_ij+mu_ji) ~= 1
     warning('fault in weights')
 end
 
-% Determine eta
+% Determine eta:
 
-e_ij = mu_ij.*sum(A_ij,2) + mu_ji.*sum(A_ji.*~act_ji,2); 
+e_ij = mu_ij.*sum(A_ij,2) + mu_ji.*sum(A_ji.*~act_ji,2);
 e_ji = mu_ji.*sum(A_ji,2) + mu_ij.*sum(A_ij.*~act_ij,2);
 
-e_ij_temp = mu_ij_temp.*sum(A_ij,2)+mu_ji_temp.*sum(A_ji.*~act_ji,2);
-e_ji_temp = mu_ji_temp.*sum(A_ji,2)+mu_ij_temp.*sum(A_ij.*~act_ij,2);
-
-% Determine residual
+% Determine residual:
 r = mu_ji.*L_ji - mu_ij.*L_ij;
-r_temp = mu_ij_temp.*L_ji_temp - mu_ij_temp.*L_ij_temp;
 
 a_r = abs(r);
-a_r_temp = abs(r_temp);
 
-T_1 = e_ij+(a_r+r)./((p(c_i)+eps).*2);   
+% Assemble transmissibility:
+
+T_1 = e_ij+(a_r+r)./((p(c_i)+eps).*2);
 T_2 = e_ji+(a_r-r)./((p(c_j)+eps).*2);
 
-T1_temp = e_ij_temp+(a_r_temp+r_temp)./((p(c_i)+eps).*2);
-T2_temp = e_ji_temp+(a_r_temp-r_temp)./((p(c_j)+eps).*2);
-
-T_face = {T_1,T_2,T1_temp,T2_temp};
+T_face = {T_1,T_2};
 
 end
 
@@ -134,184 +102,24 @@ w_ji(zeroRow) = 0.5;
 
 end
 
-
+% function T_bf = computeTransBoundaryFaces(G,coSet,p)
 % 
-% function T = computeJumpTransmissibilities(G, coSet, cellPressure)
-%     cellNo = getCellNoFaces(G);
-%     faceNo = G.cells.faces(:, 1);
-%     
-%     dim = G.griddim;
-%     n_hf = size(faceNo, 1);
-%     lnorm = sqrt(sum(coSet.l.^2, 2));
-%     
-%     elimWeights = false;
-%     
-%     pp = cell(dim, 1);
-%     [pp{:}] = deal(double2ADI(zeros(n_hf, 1), cellPressure));
-%     [p_c, p_f] = deal(pp);
-%     
-%     sum_c = zeros(n_hf, G.griddim);
-%     sum_f = zeros(n_hf, G.griddim);
-%     for i = 1:dim
-%         op_c = coSet.pressureOperators{i, 1};
-%         op_f = coSet.pressureOperators{i, 2};
-%         
-%         if elimWeights
-%             p_c{i} = op_c.P_passive*cellPressure;
-%             p_f{i} = op_f.P_passive*cellPressure;
-%         
-%             sum_c(:, i) = sum(op_c.P_active, 2);
-%             sum_f(:, i) = sum(op_f.P_active, 2);
-%         else
-%             p_c{i} = op_c.P*cellPressure;
-%             p_f{i} = op_f.P*cellPressure;
-%         end
-%     end
-%     
-%     Ac = coSet.active{1};
-%     Af = coSet.active{2};
-%     if elimWeights
-%         d_c = computeWeight2(lnorm, coSet.C{1}, p_c);
-%         d_f = computeWeight2(lnorm, coSet.C{2}, p_f);
-%     else
-%         d_c = computeWeight(lnorm, coSet.C{1}, p_c, Ac);
-%         d_f = computeWeight(lnorm, coSet.C{2}, p_f, Af);
-%     end
+% L1 = coSet.variables.boundaryVariables.L1_bf;
+% L2 = coSet.variables.boundaryVariables.L2_bf;
+% A = coSet.variables.boundaryVariables.A_bf;
+% act_cells = coSet.active.act_cell_bf;
 % 
-%     [u_c, u_f] = get_mu(d_c, d_f);
+% isBF = false(G.faces.num, 1);
+% isBF(boundaryFaces(G)) = true;
+% nghbrs = coSet.cellNeighbors{3};
+% pressure = p.val(nghbrs);
+% pressure = bsxfun(@times,pressure,act_cells);
+% c = sum(G.faces.neighbors(isBF,:),2);
 % 
-%     deviation = -u_f.*d_f + u_c.*d_c;
-%     unity = u_f + u_c;
-%     
-%     all_c = coSet.C{1};
-%     all_f = coSet.C{2};
-%     
-%     if elimWeights
-%         N_c = lnorm.*(u_c.*(sum(all_c, 2)) + u_f.*(sum(all_f.*sum_f, 2)));
-%         N_f = lnorm.*(u_f.*(sum(all_f, 2)) + u_c.*(sum(all_c.*sum_c, 2)));
-%     else
-%         N_c = lnorm.*(u_c.*(sum(all_c, 2)) + u_f.*(sum(all_f.*Af, 2)));
-%         N_f = lnorm.*(u_f.*(sum(all_f, 2)) + u_c.*(sum(all_c.*Ac, 2)));
-%     end
-%     
-%     H = sparse(faceNo, (1:numel(faceNo))', 1);
-%     N_tot = H*N_f;
-%     assert(all(N_tot >= 0))
-%     
-%     left  = G.faces.neighbors(faceNo, 1) == cellNo;
-%     right = ~left;
-%     
-%     zT = double2ADI(zeros(G.faces.num, 1), cellPressure);
-%     T = {zT, zT};
-%     flux = {zT, zT};
-%     if 1
-%         T{1}(faceNo(left)) = N_c(left);
-%         T{1}(faceNo(right)) = T{1}(faceNo(right)).*N_f(right);
+% L = sum(bsxfun(@times,L1,p.val(c)),2)+sum(bsxfun(@times,L2,pressure),2);
 % 
-%         T{2}(faceNo(right)) = N_c(right);
-%         T{2}(faceNo(left)) = T{2}(faceNo(left)).*N_f(left);
+% e = sum(A,2);
 % 
-%         for i = 1:2
-%             T{i} = T{i}./N_tot;
-%         end
-%     else
-%         % Loop based code for debugging
-%         for f = 1:G.faces.num
-%             approxFp = zeros(G.faces.num, 1);
-%             subs = find(faceNo == f);
-%             
-%             if numel(subs) == 1
-%                 continue
-%             end
-%             
-%             p = subs(1);
-%             m = subs(2);
-%             
-%             nf_p = N_f(p);
-%             nf_m = N_f(m);
-%             
-%             nc_p = N_c(p);
-%             nc_m = N_c(m);
-%             
-%             T(f, 1) = nc_p*nf_m./(nf_p + nf_m);
-%             T(f, 2) = nc_m*nf_p./(nf_p + nf_m);
-%             
-%             % debuggin'
-%             c1 = G.faces.neighbors(f, 1);
-%             c2 = G.faces.neighbors(f, 2);
-%             
-%             approxFp(f) = (cellPressure(c1)*nc_p + cellPressure(c2)*nc_m)./(nf_p + nf_m);
-%             flux(f, 1) =   nc_p*cellPressure(c1) - nf_p*approxFp(f);
-%             flux(f, 2) = -(nc_m*cellPressure(c2) - nf_m*approxFp(f));
-%             
-%             e = flux(f, 1) - flux(f, 2);
-%             if isnan(e)
-%                 e = 0;
-%             end
-%             assert(abs(e) < 1e-12)
-%         end
-%     end
-%     assert(all(N_f >= 0));
-%     assert(all(double(T{1})>=0))
-%     assert(all(double(T{2})>=0))
-% end
+% T_bf = e+(abs(L)+L)./(2*(p(c)+eps));
 % 
-% 
-% function [T, intx] = computeContTransmissibilities(G, coSet, cellPressure)
-%     intx = find(all(G.faces.neighbors > 0, 2));
-%     
-%     dim = G.griddim;
-%     n_intf = size(intx, 1);
-%     lnorm = sqrt(sum(coSet.faceSet.l.^2, 2));
-%    
-%     elimWeights = false;
-%     
-%     pp = cell(dim, 1);
-%     [pp{:}] = deal(double2ADI(zeros(n_intf, 1), cellPressure));
-%     [p_l, p_r] = deal(pp);
-%     sum_l = zeros(n_intf, G.griddim);
-%     sum_r = zeros(n_intf, G.griddim);
-% 
-%     for i = 1:dim
-%         op_l = coSet.faceSet.pressureOperators{i, 1};
-%         op_r = coSet.faceSet.pressureOperators{i, 2};
-%         
-%         if elimWeights
-%             p_l{i} = op_l.P_passive*cellPressure;
-%             p_r{i} = op_r.P_passive*cellPressure;
-%             sum_l(:, i) = sum(op_l.P_active, 2);
-%             sum_r(:, i) = sum(op_r.P_active, 2);
-%         else
-%             p_l{i} = op_l.P*cellPressure;
-%             p_r{i} = op_r.P*cellPressure;
-%         end
-%     end
-%     
-%     if elimWeights
-%         d_l = computeWeight2(lnorm, coSet.faceSet.C{1}, p_l);
-%         d_r = computeWeight2(lnorm, coSet.faceSet.C{2}, p_r);
-%     else
-%         A_l = coSet.faceSet.active{1};
-%         A_r = coSet.faceSet.active{2};
-%         d_l = computeWeight(lnorm, coSet.faceSet.C{1}, p_l, A_l);
-%         d_r = computeWeight(lnorm, coSet.faceSet.C{2}, p_r, A_r);
-%     end
-%     [u_l, u_r] = get_mu(d_l, d_r);
-%     % deviation = -u_r.*d_r + u_l.*d_l;
-%     % unity = u_r + u_l;
-%     
-%     all_l = coSet.faceSet.C{1};
-%     all_r = coSet.faceSet.C{2};
-%     if elimWeights
-%         T_l = lnorm.*(u_l.*(sum(all_l, 2)) + u_r.*(sum(sum_r.*all_r, 2)));
-%         T_r = lnorm.*(u_r.*(sum(all_r, 2)) + u_l.*(sum(sum_l.*all_l, 2)));
-%     else
-%         T_l = lnorm.*(u_l.*(sum(all_l, 2)) + u_r.*(sum(all_r.*A_r, 2)));
-%         T_r = lnorm.*(u_r.*(sum(all_r, 2)) + u_l.*(sum(all_l.*A_l, 2)));
-%     end
-%     
-%     TT = (double2ADI(zeros(G.faces.num, 1), cellPressure));
-%     T = {TT, TT};
-%     T{1}(intx) = T_l;
-%     T{2}(intx) = T_r;
 % end

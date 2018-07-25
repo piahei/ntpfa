@@ -1,4 +1,6 @@
- G = computeGeometry(cartGrid([10,10], [1,1]));
+%% Unit square convergence test
+
+G = computeGeometry(cartGrid([10,10], [1,1]));
 G = computeGeometry(twister(G));
 srci = @(x) -sin(x);
 

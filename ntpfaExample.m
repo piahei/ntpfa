@@ -2,17 +2,17 @@ mrstModule add book pia ad-core ad-blackoil ad-props solvers...
                blackoil-sequential mimetic incomp mpfa streamlines mrst-gui...
                vemmech;
 %% Standard cart grid ------------------------------------------------------
-% 
+
 % n = 10;
 % G = computeGeometry(cartGrid([n,n], [1,1]));
 % G = computeGeometry(twister(G));
 % rock = makeRock(G, 100*milli*darcy, 0.002);
 % %%Anisotropic perm:-----------------
-% K = [1, 0; 0, 100]*100*milli*darcy;
-% R = @(t) [cos(t), -sin(t); sin(t), cos(t)];
-% t = pi/8;
-% K = R(t)*K*R(t)';
-% rock.perm = repmat([K(1,1), K(1,2), K(2,2)], G.cells.num, 1);
+% % K = [1, 0; 0, 100]*100*milli*darcy;
+% % R = @(t) [cos(t), -sin(t); sin(t), cos(t)];
+% % t = pi/8;
+% % K = R(t)*K*R(t)';
+% % rock.perm = repmat([K(1,1), K(1,2), K(2,2)], G.cells.num, 1);
 % %-----------------------------------
 % [src,W,bc] = deal([]);
 % bc = pside(bc, G, 'west', 0*barsa, 'sat', [1,0]);
@@ -48,44 +48,50 @@ mrstModule add book pia ad-core ad-blackoil ad-props solvers...
 % end
 % % --------------------------------------------------------------------------
 %% Skew grid ---------------------------------------------------------------
-G = cartGrid([61,30],[2,1]);
-makeSkew = @(c) c(:,1) + .4*(1-(c(:,1)-1).^2).*(1-c(:,2));
-G.nodes.coords(:,1) = 2*makeSkew(G.nodes.coords);
-G = computeGeometry(G);
-rock = makeRock(G, 100*milli*darcy, 0.2);
-pv   = sum(poreVolume(G,rock));
-[bc, src, W] = deal([]);
-srcCells = findEnclosingCell(G,[2 .975; .5 .025; 3.5 .025]);
-src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
+% G = cartGrid([61,30],[2,1]);
+% makeSkew = @(c) c(:,1) + .4*(1-(c(:,1)-1).^2).*(1-c(:,2));
+% G.nodes.coords(:,1) = 2*makeSkew(G.nodes.coords);
+% G = computeGeometry(G);
+% rock = makeRock(G, 100*milli*darcy, 0.2);
+% pv   = sum(poreVolume(G,rock));
+% [bc, src, W] = deal([]);
+% srcCells = findEnclosingCell(G,[2 .975; .5 .025; 3.5 .025]);
+% src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
 
 %% Vemmech grid -------------------------------------------------------------
-% opt = struct('L'         , [5 5], ...
-%              'cartDims'  , [4 4], ...
-%              'grid_type' , 'square', ...
-%              'disturb'   , 0.1, ... %parameter for disturbing grid
-%              'E'         , 4e7, ...  %youngs modolo
-%              'nu'        , 0.44);% poiso ratio
-% 
-% G = squareGrid(opt.cartDims,opt.L,'grid_type','mixed3','disturb',opt.disturb);
-% G = computeGeometry(G);
-% 
-% rock = makeRock(G, 100*milli*darcy,0.002);
-% 
-% [Lx, Ly] = deal(opt.L(1), opt.L(2));
-% assert(G.griddim == 2);
-% x = [0, Lx];
-% 
-% [bc,src,W]=deal([]);
-% 
-% % bc = cell(4,1);
-% for i = 1 : 2
-%     faces = find(abs(G.faces.centroids(:, 1) - x(i)) < eps);
-%     bc = addBC(bc, faces, 'pressure', (2-i)*100*barsa,'sat',[1]);
-% %     bc{i} = addBC([],faces,'pressure',0);
-% %     bc{i} = rmfield(bc{i}, 'type');
-% %     bc{i} = rmfield(bc{i}, 'sat');
-% end
-% y = [0, Ly];
+opt = struct('L'         , [1 1], ...
+             'cartDims'  , [15 15], ...
+             'grid_type' , 'square', ...
+             'disturb'   , 0.1, ... %parameter for disturbing grid
+             'E'         , 4e7, ...  %youngs modolo
+             'nu'        , 0.44);% poiso ratio
+
+G = squareGrid(opt.cartDims,opt.L,'grid_type','mixed1','disturb',opt.disturb);
+G = computeGeometry(G);
+
+rock = makeRock(G, 100*milli*darcy,0.002);
+
+K = [100, 0; 0, 100]*milli*darcy;
+rock.perm = repmat([K(1,1), K(1,2), K(2,2)], G.cells.num, 1);
+
+[Lx, Ly] = deal(opt.L(1), opt.L(2));
+assert(G.griddim == 2);
+x = [0, Lx];
+
+[bc,src,W]=deal([]);
+
+% srcCells = findEnclosingCell(G,[.5 .025; .2 .025; .8 .025]);
+% src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
+
+%bc = cell(4,1);
+for i = 1 : 2
+    faces = find(abs(G.faces.centroids(:, 1) - x(i)) < eps);
+    bc = addBC(bc, faces, 'pressure', (2-i)*100*barsa,'sat',[1]);
+%     bc{i} = addBC([],faces,'pressure',0);
+%     bc{i} = rmfield(bc{i}, 'type');
+%     bc{i} = rmfield(bc{i}, 'sat');
+end
+%y = [0, Ly];
 % for i = 1 : 2
 %     faces = find(abs(G.faces.centroids(:, 2) - y(i)) < eps);
 %     bc = addBC(bc,faces,'pressure',50*barsa,'sat',[1]);
@@ -104,12 +110,12 @@ src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
 % T.nodes.coords = bsxfun(@times, ...
 % bsxfun(@minus, T.nodes.coords, Tmin), 1000./(Tmax - Tmin));
 % T = computeGeometry(T); 
-
+% 
 % % 
 % % % Triangular:
-% G = T;
+%  G = T;
 
-% Cartesian:
+% % Cartesian:
 % G = computeGeometry(cartGrid([25 25], [1000 1000]));
 % inside = isPointInsideGrid(T, G.cells.centroids);
 % G = removeCells(G, ~inside);
@@ -137,12 +143,12 @@ src = addSource(src, srcCells, [1; -0.5; -0.5],'sat',[1]);
 % rock = makeRock(G, 100*milli*darcy, 0.2);
 % e=boundaryFaces(G);
 % [bc,src,W]=deal([]);
-% bc = addBC(bc, e, 'pressure', 50*barsa, 'sat',[1]);
+% bc = addBC(bc, e, 'pressure', 100*barsa, 'sat',[1]);
 % tmp = (G.cells.centroids - repmat([450, 500],G.cells.num,1)).^2;
 % [~,ind] = min(sum(tmp,2));
 % pv = sum(poreVolume(G,rock));
 %  %src = addSource(src, ind, -.02*pv/year,'sat',[1]);
-% src = addSource(src, ind, -.02*pv,'sat',[1]);
+% src = addSource(src, ind, .02*pv/year,'sat',[1]);
 
 % 
 %  rock.poro = repmat(0.2, G.cells.num, 1);
@@ -206,6 +212,7 @@ fluid = initSimpleADIFluid();
 % fluid = initSimpleADIFluid('phases', 'WO', 'mu', mu, 'rho', rho, 'n', nkr);
 
 %state0 = initResSol(G, 100*barsa, [0,1]);
+
 state0 = initResSol(G, 0, [0 1]);
 
 % [src,W,bc] = deal([]);
@@ -214,7 +221,7 @@ state0 = initResSol(G, 0, [0 1]);
 
 %schedule = simpleSchedule(dT, 'W', W, 'bc', bc, 'src', src);
 
-model = PressureOilWaterModelNTPFAopt(G,rock,fluid);%,'Algorithm','interior-point'); %can use sqp, faster but worse result in some cases
+model = PressureOilWaterModelNTPFAopt(G,rock,fluid);
 model2 = PressureOilWaterModelNTPFA(G,rock,fluid);
 
 %schedule = simpleSchedule(dT, 'W', W, 'bc', bc, 'src', src);
@@ -222,50 +229,40 @@ model2 = PressureOilWaterModelNTPFA(G,rock,fluid);
 state = incompSinglePhaseNTPFA(model, state0,'bc', bc, 'src',src);
 state2 = incompSinglePhaseNTPFA(model2,state0,'bc',bc,'src',src);
 
+%MPFA: 
+fluid2 = initSimpleFluid('mu', [1, 1], 'rho', [1, 1], 'n', [1, 1]);
+modelMPFA = computeMultiPointTrans(G, rock);
+mpfa = incompMPFA(state0, G, modelMPFA, fluid2, 'bc', bc,'src', src);
+
 
 figure(1)
 clf
-subplot(1,2,1)
 
+subplot(1,3,1)
 plotCellData(G,state.pressure)
-%3D:
-%view(-125,20),camproj perspective
-
-% hold on
-% plot([.5 2 3.5], [.025 .975 .025],'.','Color',[.9 .9 .9],'MarkerSize',16);
-% hold off
 title('NTPFA OPT')
 axis equal tight
-colorbar('Location','Southoutside');
-subplot(1,2,2)
+colorbar('Location','Southoutside')
+
+subplot(1,3,2)
 plotCellData(G,state2.pressure)
-%view(-125,20),camproj perspective
-% hold on
-% plot([.5 2 3.5], [.025 .975 .025],'.','Color',[.9 .9 .9],'MarkerSize',16);
-% hold off
 title('NTPFA lin')
 axis equal tight
-colorbar('Location','Southoutside');
-%plotToolbar(G, state)
+colorbar('Location','Southoutside')
 
+subplot(1,3,3)
+plotCellData(G,mpfa.pressure)
+title('MPFA')
+axis equal tight
+colorbar('Location','southoutside')
 
-figure(2)
+figure(4)
 clf
 x = G.cells.centroids(:, 1);
-plot(x,state.pressure,'.');
+plot(x,state.pressure,'.','markerSize',14);
 hold on
-plot(x,state2.pressure,'.');
-legend('ntpfaOPT','ntpfaLIN');
+plot(x,state2.pressure,'.','markerSize',14);
+plot(x,mpfa.pressure,'.','markerSize',14);
+legend('NTPFAopt','NTPFA','MPFA');
 
-%% Anisotropic perm
 
-% K = [1, 0; 0, 100]*100*milli*darcy;
-% R = @(t) [cos(t), -sin(t); sin(t), cos(t)];
-% t = pi/8;
-% K = R(t)*K*R(t)';
-% 
-% rock.perm = repmat([K(1,1), K(1,2), K(2,2)], G.cells.num, 1);
-% 
-% model = PressureOilWaterModelNTPFA(G, rock, fluid);
-% state = incompSinglePhaseNTPFA(model, state0, 'bc', bc);
-% 

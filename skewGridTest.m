@@ -1,17 +1,12 @@
-%% Compare convergence for the TPFA and NTPFA schemes
+%% Compare results for the TPFA and NTPFA schemes on a non K-orthogonal grid
 % We consider a homogeneous, rectangular reservoir with a symmetric well
 % pattern consisting of one injector and two producers. Because of the
 % symmetry, the travel times from the injector to each producer should be
 % equal. When using a skew grid that is not K-orhtogonal, the travel times
-% will not be equal and the flow pattern will differ quite a lot from being
-% symmetric. In particular, since our discretization method is not
-% consistent, the dissymmetry does not decay with increasing grid
-% resolution and hence the method does not converge.
-mrstModule add incomp diagnostics streamlines
-
-figure('Position', [440 450 865 351]);
-T = nan(30,2);
-disp('Convergence study:');
+% of the TPFA method will not be equal and the flow pattern will differ 
+% quite a lot from being symmetric. The NTPFAopt method produces symmetric,
+% well defined results, whereas the NTPFA method yields inaccurate results.
+mrstModule add incomp diagnostics streamlines pia ad-core
 
 % Rectangular reservoir with a skew grid.
 G = cartGrid([60+1,30],[2,1]);
@@ -28,10 +23,10 @@ pv   = sum(poreVolume(G,rock));
 srcCells = findEnclosingCell(G,[2 .975; .5 .025; 3.5 .025]);
 src = addSource([], srcCells, [pv; -.5*pv; -.5*pv],'sat',[1]);
 
-% Single-phase fluid
+% Single-phase fluid for TPFA
 fluid = initSingleFluid('mu', 1*centi*poise,'rho', 1000*kilogram/meter^3);
 
-% Solve flow problem TPFA:
+% Solve flow problem using TPFA:
 hT     = computeTrans(G, rock);
 stateTPFA  = initState(G,[], 0);
 stateTPFA  = incompTPFA(stateTPFA, G, hT, fluid, 'src', src);
@@ -40,34 +35,35 @@ tofTPFA    = computeTimeOfFlight(stateTPFA, G, rock, 'src', src);
 % Solve flow problem NTPFAopt:
 state0 = initResSol(G, 0, [1 0]);
 fluidNTPFA = initSimpleADIFluid();
-stateNTPFAopt = PressureOilWaterModelNTPFAopt(G,rock,fluidNTPFA);
-stateNTPFAopt = incompSinglePhaseNTPFA(stateNTPFAopt, state0,'src',src);
+modelNTPFAopt = PressureOilWaterModelNTPFAopt(G,rock,fluidNTPFA);
+stateNTPFAopt = incompSinglePhaseNTPFA(modelNTPFAopt, state0,'src',src);
 tofNTPFAopt    = computeTimeOfFlight(stateNTPFAopt, G, rock, 'src', src);
 
-% solve flow probem NTPFAlin:
-stateNTPFAlin = PressureOilWaterModelNTPFA(G,rock,fluidNTPFA);
-stateNTPFAlin = incompSinglePhaseNTPFA(stateNTPFAlin,state0,'src',src);
-tofNTPFAlin = computeTimeOfFlight(stateNTPFAlin,G,rock,'src',src);
-% Plot solution
+% solve flow probem NTPFA:
+modelNTPFA = PressureOilWaterModelNTPFA(G,rock,fluidNTPFA);
+stateNTPFA = incompSinglePhaseNTPFA(modelNTPFA,state0,'src',src);
+tofNTPFAlin = computeTimeOfFlight(stateNTPFA,G,rock,'src',src);
 
+% Plot solution:
 figure(1)
+clf
 subplot(3,1,1);
 plotCellData(G,stateTPFA.pressure,'EdgeColor','k','EdgeAlpha',.05);
-axis equal
+axis equal tight
 hold on
 plot([.5 2 3.5], [.025 .975 .025],'.','Color',[.9 .9 .9],'MarkerSize',16);
 hold off
 
 subplot(3,1,2);
 plotCellData(G, stateNTPFAopt.pressure, 'EdgeColor', 'k', 'EdgeAlpha', .05);
-axis equal
+axis equal tight
 hold on
 plot([.5 2 3.5], [.025 .975 .025],'.','Color',[.9 .9 .9],'MarkerSize',16);
 hold off
 
 subplot(3,1,3);
-plotCellData(G,stateNTPFAlin.pressure,'EdgeColor','k','EdgeAlpha',.05);
-axis equal
+plotCellData(G,stateNTPFA.pressure,'EdgeColor','k','EdgeAlpha',.05);
+axis equal tight
 hold on
 plot([.5 2 3.5], [.025 .975 .025],'.','Color',[.9 .9 .9],'MarkerSize',16);
 hold off
@@ -90,8 +86,8 @@ set ([ hf ; hb ], 'Color' , 'k' );
 subplot(3,1,3);
 plotCellData(G, tofNTPFAlin, tofNTPFAlin<.2, 'EdgeColor','none'); caxis([0 .2]); box on
 seed = floor(G.cells.num/5)+(1:G.cartDims(1))';
-hf = streamline(pollock(G, stateNTPFAlin, seed, 'substeps', 1) );
-hb = streamline(pollock(G, stateNTPFAlin, seed, 'substeps', 1, 'reverse' , true));
+hf = streamline(pollock(G, stateNTPFA, seed, 'substeps', 1) );
+hb = streamline(pollock(G, stateNTPFA, seed, 'substeps', 1, 'reverse' , true));
 set ([ hf ; hb ], 'Color' , 'k' );
 
 %{
